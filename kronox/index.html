@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>KRONOX</title>
+  <style>
+    html, body, #root {
+      margin: 0; padding: 0; height: 100%;
+      background: #111111; color: #ffffff;
+      overflow: hidden;
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    button { cursor: pointer; background: transparent; color: inherit; border: none; }
+    input[type="range"] { accent-color: #ffffff; cursor: pointer; }
+    ::-webkit-scrollbar { width: 5px; }
+    ::-webkit-scrollbar-track { background: #111; }
+    ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: #444; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
