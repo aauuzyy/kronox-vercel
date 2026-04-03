@@ -902,6 +902,12 @@ function CatalogPanel({ onBack, onPlay }) {
                 style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
                 PLAY
               </button>
+              <button onClick={() => onPlay(song, true)}
+                style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 12px', borderRadius: 5, background: 'transparent', color: '#ffd93d', border: '1px solid #ffd93d44', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.12s' }}
+                onMouseEnter={e => { e.currentTarget.style.background = '#ffd93d11' }}
+                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
+                ▶▶
+              </button>
             </div>
           </div>
           )
@@ -2334,7 +2340,7 @@ export default function App() {
     }
   }
 
-  const handlePlayFromCatalog = song => {
+  const handlePlayFromCatalog = (song, autoplay = false) => {
     // Increment play count (best-effort, non-blocking)
     import('./supabase.js').then(({ incrementPlays }) => incrementPlays(song.id)).catch(() => {})
     setGameConfig({
@@ -2345,6 +2351,7 @@ export default function App() {
       speed:       song.speed,
       chart:       song.chart,
       keybinds, laneColors, sfxVolume, musicVolume,
+      autoplay,
     })
     setScreen('game')
   }
