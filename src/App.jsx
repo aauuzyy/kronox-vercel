@@ -469,11 +469,17 @@ function CalibrationModal({ onClose }) {
               ))}
             </div>
             <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#444', textAlign: 'center' }}>{window.innerWidth < 600 ? 'Tap the button on every beat...' : 'Tap SPACE on every beat...'}</div>
+            {window.innerWidth >= 600 && (
+              <button
+                onPointerDown={e => { e.preventDefault(); handleTap() }}
+                style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none' }}>
+                TAP
+              </button>
+            )}
             {window.innerWidth < 600 && (
               <button
-                onTouchStart={e => { e.preventDefault(); handleTap() }}
-                onClick={handleTap}
-                style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none' }}>
+                onPointerDown={e => { e.preventDefault(); handleTap() }}
+                style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
                 TAP
               </button>
             )}
@@ -1076,6 +1082,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const [recordCountdown, setRecordCountdown] = useState(null)
   const recordChartRef   = useRef(null)
   const [recordChart, setRecordChart] = useState(null)
+  const [recLanePressed, setRecLanePressed] = useState([false, false, false, false])
   const recordKeyDownRef = useRef({})
 
   const startRecording = () => {
@@ -1189,7 +1196,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', padding: '1.5rem', gap: '1.25rem', background: '#141414' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', overflowX: 'hidden', padding: '1.5rem', gap: '1.25rem', background: '#141414' }}>
       <div>
         <div style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', fontWeight: 'bold', marginBottom: 6 }}>KRONOX</div>
         <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#888' }}>Build your chart, then play it back</div>
@@ -1197,17 +1204,17 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
 
       {/* File + Title */}
       <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 600 ? '1fr' : '2fr 1fr', gap: '1rem' }}>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <FieldLabel>SONG FILE</FieldLabel>
-          <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 6, cursor: 'pointer', background: '#1a1a1a', border: `2px dashed ${songFile ? '#66ff99' : '#333'}`, transition: 'all 0.2s' }}>
+          <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 6, cursor: 'pointer', background: '#1a1a1a', border: `2px dashed ${songFile ? '#66ff99' : '#333'}`, transition: 'all 0.2s', overflow: 'hidden', minWidth: 0 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: songFile ? '#66ff99' : '#333', flexShrink: 0 }} />
-            <span style={{ fontFamily: 'Arial', fontSize: 14, color: songFile ? '#fff' : '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            <span style={{ fontFamily: 'Arial', fontSize: 14, color: songFile ? '#fff' : '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
               {songFile ? songFile.name : 'Click to upload MP3/OGG/WAV'}
             </span>
             <input type="file" accept="audio/*" onChange={handleFile} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
           </label>
         </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <FieldLabel>SONG TITLE</FieldLabel>
           <input value={songTitle} onChange={e => { setSongTitle(e.target.value); saveSettings({ songTitle: e.target.value }) }}
             style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', padding: '12px 14px', borderRadius: 6, background: '#1a1a1a', border: '1px solid #333', outline: 'none', width: '100%', boxSizing: 'border-box' }}
@@ -1271,7 +1278,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
               </div>
             </div>
           )}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, background: '#1a1a1a', borderRadius: 6, border: '1px solid #2a2a2a', padding: '12px', maxHeight: 340, overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, background: '#1a1a1a', borderRadius: 6, border: '1px solid #2a2a2a', padding: '12px', minHeight: window.innerWidth < 600 ? 220 : 0, maxHeight: window.innerWidth < 600 ? 280 : 340, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(4, 1fr)', gap: 4 }}>
               <div />
               {['L', 'D', 'U', 'R'].map((n, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'center' }}><span style={{ fontFamily: 'Arial', fontSize: 7, color: LANE_COLORS[i], letterSpacing: 1 }}>{n}</span></div>))}
@@ -1388,11 +1395,10 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
                 <div style={{ display: 'flex', gap: 8 }}>
                   {[0, 1, 2, 3].map(lane => (
                     <button key={lane}
-                      onTouchStart={e => { e.preventDefault(); recordTouchDown(lane) }}
-                      onTouchEnd={e => { e.preventDefault(); recordTouchUp(lane) }}
-                      onMouseDown={() => recordTouchDown(lane)}
-                      onMouseUp={() => recordTouchUp(lane)}
-                      style={{ flex: 1, height: 80, borderRadius: 8, background: activeLaneColors[lane] + '22', border: `2px solid ${activeLaneColors[lane]}`, color: activeLaneColors[lane], fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
+                      onPointerDown={e => { e.preventDefault(); setRecLanePressed(p => { const n=[...p]; n[lane]=true; return n }); recordTouchDown(lane) }}
+                      onPointerUp={e => { e.preventDefault(); setRecLanePressed(p => { const n=[...p]; n[lane]=false; return n }); recordTouchUp(lane) }}
+                      onPointerLeave={() => setRecLanePressed(p => { const n=[...p]; n[lane]=false; return n })}
+                      style={{ flex: 1, height: 80, borderRadius: 8, background: recLanePressed[lane] ? activeLaneColors[lane] + '55' : activeLaneColors[lane] + '18', border: `2px solid ${recLanePressed[lane] ? activeLaneColors[lane] : activeLaneColors[lane] + '66'}`, color: recLanePressed[lane] ? activeLaneColors[lane] : activeLaneColors[lane] + '99', fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none', transition: 'background 0.05s, border 0.05s' }}>
                       {LANE_NAMES[lane]}
                     </button>
                   ))}
@@ -2326,7 +2332,7 @@ export default function App() {
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#111', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#111', overflow: 'hidden' }}>
       {screen !== 'catalog' && (
         <TitleBar
           onToggleSettings={() => setShowSettings(s => !s)}
