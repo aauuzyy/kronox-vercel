@@ -24,14 +24,24 @@ function buildChart(beats) {
 }
 
 // ── Leaderboard helpers ───────────────────────────────────────────────────────
-function loadLeaderboard() {
-  try { return JSON.parse(localStorage.getItem('kronox-leaderboard') || '[]') } catch { return [] }
+function loadPlayerStats() {
+  try { return JSON.parse(localStorage.getItem('kronox-player-stats') || '{}') } catch { return {} }
 }
-function saveLeaderboardEntry(entry) {
-  const lb = loadLeaderboard()
-  lb.push(entry)
-  lb.sort((a, b) => b.score - a.score)
-  localStorage.setItem('kronox-leaderboard', JSON.stringify(lb.slice(0, 100)))
+function addPlayerGameResult(guestId, { score, accuracy, grade, perfect, good, bad, miss }) {
+  const all  = loadPlayerStats()
+  const prev = all[guestId] || { totalScore: 0, gamesPlayed: 0, bestAccuracy: 0, bestGrade: 'C', totalPerfect: 0, totalGood: 0, totalBad: 0, totalMiss: 0 }
+  const gradeRank = { 'S+': 5, 'S': 4, 'A': 3, 'B': 2, 'C': 1 }
+  all[guestId] = {
+    totalScore:   prev.totalScore   + (score   || 0),
+    gamesPlayed:  prev.gamesPlayed  + 1,
+    bestAccuracy: Math.max(prev.bestAccuracy, accuracy || 0),
+    bestGrade:    (gradeRank[grade] || 0) > (gradeRank[prev.bestGrade] || 0) ? grade : prev.bestGrade,
+    totalPerfect: prev.totalPerfect + (perfect || 0),
+    totalGood:    prev.totalGood    + (good    || 0),
+    totalBad:     prev.totalBad     + (bad     || 0),
+    totalMiss:    prev.totalMiss    + (miss    || 0),
+  }
+  localStorage.setItem('kronox-player-stats', JSON.stringify(all))
 }
 function calcGrade(accuracy) {
   if (accuracy >= 95) return 'S+'
@@ -229,55 +239,121 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, onC
 }
 
 // ─── Leaderboard Modal ────────────────────────────────────────────────────────
+const LB_RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32']
+const LB_MEDALS      = ['🥇', '🥈', '🥉']
+
 function LeaderboardModal({ onClose }) {
-  const [entries, setEntries] = useState(loadLeaderboard())
+  const [players, setPlayers] = useState(() =>
+    Object.entries(loadPlayerStats())
+      .map(([id, d]) => ({ id, ...d }))
+      .sort((a, b) => b.totalScore - a.totalScore)
+  )
 
   const clearAll = () => {
-    localStorage.removeItem('kronox-leaderboard')
-    setEntries([])
+    localStorage.removeItem('kronox-player-stats')
+    setPlayers([])
   }
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#181818', border: '1px solid #2a2a2a', borderRadius: 8, padding: '28px 32px', width: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>HIGH SCORES</span>
-          <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+    <div
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <style>{`
+        @keyframes lbIn { from { opacity:0; transform:scale(0.97) translateY(12px) } to { opacity:1; transform:scale(1) translateY(0) } }
+        @keyframes lbRowIn { from { opacity:0; transform:translateX(-8px) } to { opacity:1; transform:translateX(0) } }
+      `}</style>
+      <div style={{
+        background: '#0f0f0f', border: '1px solid #252525', borderRadius: 14,
+        width: 640, maxHeight: '86vh', display: 'flex', flexDirection: 'column',
+        overflow: 'hidden', animation: 'lbIn 0.22s cubic-bezier(0.22,1,0.36,1) forwards',
+        boxShadow: '0 32px 80px rgba(0,0,0,0.7)',
+      }}>
+
+        {/* Header */}
+        <div style={{ padding: '26px 30px 18px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div>
+            <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 4, marginBottom: 6 }}>DEDCIATED PLAYERS · ALL TIME</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 20, color: '#fff', fontWeight: 'bold', letterSpacing: 4 }}>LEADERBOARD</div>
+          </div>
+          <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, paddingBottom: 2 }}>✕</button>
         </div>
 
-        {entries.length === 0 ? (
-          <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#333', textAlign: 'center', padding: '36px 0' }}>
-            No scores yet — play a song to get on the board!
-          </div>
-        ) : (
-          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-            {entries.slice(0, 20).map((e, i) => (
-              <div key={i} style={{
-                display: 'grid', gridTemplateColumns: '32px 30px 1fr 54px 100px',
-                alignItems: 'center', gap: 10, padding: '10px 12px',
-                background: '#111', borderRadius: 6,
-                border: `1px solid ${i === 0 ? '#ffd70022' : '#1a1a1a'}`,
-              }}>
-                <span style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 1, fontWeight: 'bold', color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#333' }}>#{i + 1}</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 17, fontWeight: 'bold', color: GRADE_COLORS[e.grade] || '#888' }}>{e.grade}</span>
-                <div>
-                  <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#ccc', fontWeight: 'bold' }}>{e.songTitle}</div>
-                  <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', marginTop: 2 }}>{e.date}</div>
-                </div>
-                <span style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', textAlign: 'right' }}>{e.accuracy}%</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', color: '#fff', textAlign: 'right' }}>{e.score.toLocaleString()}</span>
-              </div>
+        {/* Column headers */}
+        {players.length > 0 && (
+          <div style={{ display: 'grid', gridTemplateColumns: '52px 1fr 72px 60px 130px', gap: 8, padding: '10px 28px', borderBottom: '1px solid #141414' }}>
+            {[['RANK', 'left'], ['PLAYER', 'left'], ['GAMES', 'right'], ['BEST', 'left'], ['TOTAL SCORE', 'right']].map(([h, align]) => (
+              <span key={h} style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a', letterSpacing: 2, textAlign: align }}>{h}</span>
             ))}
           </div>
         )}
 
-        {entries.length > 0 && (
+        {/* Rows */}
+        <div style={{ overflowY: 'auto', flex: 1, padding: players.length === 0 ? 0 : '10px 18px 10px' }}>
+          {players.length === 0 ? (
+            <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#2a2a2a', textAlign: 'center', padding: '60px 0' }}>
+              No scores yet — complete a song to appear here!
+            </div>
+          ) : players.map((p, i) => {
+            const isYou     = p.id === GUEST_ID
+            const isTop3    = i < 3
+            const rc        = LB_RANK_COLORS[i]
+            const rowBg     = isYou ? 'rgba(77,150,255,0.07)' : isTop3 ? `${rc}08` : 'transparent'
+            const rowBorder = isYou ? 'rgba(77,150,255,0.22)' : isTop3 ? `${rc}22` : '#191919'
+            return (
+              <div key={p.id} style={{
+                display: 'grid', gridTemplateColumns: '52px 1fr 72px 60px 130px',
+                alignItems: 'center', gap: 8, padding: '14px 10px',
+                background: rowBg, borderRadius: 9, marginBottom: 4,
+                border: `1px solid ${rowBorder}`,
+                animation: `lbRowIn 0.18s ease-out ${Math.min(i * 0.04, 0.3)}s both`,
+              }}>
+                {/* Rank */}
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {isTop3
+                    ? <span style={{ fontSize: 20, lineHeight: 1 }}>{LB_MEDALS[i]}</span>
+                    : <span style={{ fontFamily: 'Arial', fontSize: 10, fontWeight: 'bold', color: '#252525' }}>#{i + 1}</span>
+                  }
+                </div>
+                {/* Player */}
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontFamily: 'Arial', fontSize: 12, color: isYou ? '#4d96ff' : isTop3 ? rc : '#bbb', fontWeight: isYou || isTop3 ? 'bold' : 'normal' }}>
+                      {p.id}
+                    </span>
+                    {isYou && (
+                      <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, color: '#4d96ff', background: 'rgba(77,150,255,0.12)', padding: '2px 6px', borderRadius: 3 }}>YOU</span>
+                    )}
+                  </div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#2d2d2d', marginTop: 3, letterSpacing: 1 }}>
+                    {(p.totalPerfect || 0).toLocaleString()}P · {(p.totalGood || 0).toLocaleString()}G · {(p.totalMiss || 0).toLocaleString()}M
+                  </div>
+                </div>
+                {/* Games played */}
+                <div style={{ textAlign: 'right', fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', color: '#3a3a3a' }}>{p.gamesPlayed}</div>
+                {/* Best grade */}
+                <div style={{ fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', color: GRADE_COLORS[p.bestGrade] || '#888' }}>{p.bestGrade}</div>
+                {/* Total score */}
+                <div style={{ fontFamily: 'Arial', fontSize: 17, fontWeight: 'bold', color: isTop3 ? rc : isYou ? '#4d96ff' : '#fff', textAlign: 'right', letterSpacing: 1 }}>
+                  {(p.totalScore || 0).toLocaleString()}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ padding: '14px 28px', borderTop: '1px solid #141414', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#222', letterSpacing: 2 }}>
+            {players.length} PLAYER{players.length !== 1 ? 'S' : ''} RANKED
+          </span>
           <button onClick={clearAll}
-            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '7px 0', borderRadius: 5, background: 'transparent', border: '1px solid #1e1e1e', color: '#2a2a2a', cursor: 'pointer' }}>
-            CLEAR ALL SCORES
+            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '6px 14px', borderRadius: 4, background: 'transparent', border: '1px solid #1e1e1e', color: '#252525', cursor: 'pointer', transition: 'color 0.15s, border-color 0.15s' }}
+            onMouseEnter={e => { e.currentTarget.style.color = '#ff6b6b'; e.currentTarget.style.borderColor = '#ff6b6b44' }}
+            onMouseLeave={e => { e.currentTarget.style.color = '#252525'; e.currentTarget.style.borderColor = '#1e1e1e' }}>
+            RESET ALL STATS
           </button>
-        )}
+        </div>
       </div>
     </div>
   )
@@ -1570,7 +1646,7 @@ export default function App() {
   const handleGameStop = (status, stats) => {
     if (status === 'complete') {
       const grade = calcGrade(stats.accuracy)
-      saveLeaderboardEntry({ ...stats, grade, date: new Date().toLocaleDateString() })
+      addPlayerGameResult(GUEST_ID, { ...stats, grade })
       setGameStats({ ...stats, grade })
       setScreen('results')
     } else {
@@ -1604,7 +1680,8 @@ export default function App() {
         />
       )}
 
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <style>{`@keyframes screenIn { from { opacity:0; transform:translateY(8px) } to { opacity:1; transform:translateY(0) } }`}</style>
+      <div key={screen} style={{ flex: 1, overflow: 'hidden', animation: 'screenIn 0.18s ease-out' }}>
         {screen === 'setup' && (
           <SetupPanel
             keybinds={keybinds}
