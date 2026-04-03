@@ -985,7 +985,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   }
 
   const saveSettings = useCallback((overrides = {}) => {
+    const existing = loadSettings()
     localStorage.setItem('kronox-settings', JSON.stringify({
+      ...existing,
       songTitle, speed, bpm, beats, subdivision, chart,
       audioFileName: saved.audioFileName, ...overrides,
     }))
@@ -1018,7 +1020,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     if (audioRef.current) { audioRef.current.pause() }
     const url = URL.createObjectURL(file)
     const audio = new Audio(url)
-    audio.volume = musicVolume ?? 1.0
+    // Read from prop first, fall back to localStorage so the IndexedDB restore
+    // path (stale closure on mount) still gets the correct saved volume.
+    audio.volume = (musicVolume ?? loadSettings().musicVolume) ?? 1.0
     audio.addEventListener('timeupdate', () => setPreviewPos(audio.currentTime))
     audio.addEventListener('play',  () => setIsPlaying(true))
     audio.addEventListener('pause', () => setIsPlaying(false))
