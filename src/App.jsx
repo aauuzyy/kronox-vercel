@@ -1375,8 +1375,8 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
             </>
           )}
           {recordCountdown !== null && (
-            <div style={{ position: 'relative', border: '1px solid #ff4d8f33', borderRadius: 6, overflow: 'hidden', height: 120, background: '#1a0a10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff4d8f88', letterSpacing: 3, position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center' }}>GET READY</span>
+            <div style={{ position: 'relative', border: '1px solid #2a2a2a', borderRadius: 6, overflow: 'hidden', height: 120, background: '#141414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', letterSpacing: 3, position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center' }}>GET READY</span>
               <CountdownOverlay count={recordCountdown} />
             </div>
           )}
@@ -1717,6 +1717,11 @@ function GameView({ config, onStop }) {
     audio.volume = config.musicVolume ?? 1.0
     audioRef.current = audio
     audio.onended = stopGame
+    // Unlock audio playback on mobile: a silent play+pause during the
+    // mount (which fires synchronously from the user-gesture that started
+    // the game) keeps the gesture context alive so the delayed .play()
+    // inside the countdown timer is allowed by the browser.
+    audio.play().then(() => { audio.pause(); audio.currentTime = 0 }).catch(() => {})
     connectAnalyser(audio)
 
     const subdivision = config.subdivision || 1
@@ -2163,6 +2168,7 @@ function Results({ stats, onExit, onPlayAgain }) {
       display: 'flex', flexDirection: 'column',
       opacity: fadeOut ? 0 : 1, transition: 'opacity 0.38s',
       overflow: 'auto', fontFamily: 'Arial, sans-serif',
+      zIndex: 700,
     }}>
       <style>{`
         @keyframes slideUp { from { transform:translateY(20px);opacity:0 } to { transform:translateY(0);opacity:1 } }
@@ -2253,13 +2259,25 @@ function FieldLabel({ children }) {
   return <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#555', letterSpacing: 3 }}>{children}</span>
 }
 function SliderField({ label, value, min, max, step, display, onChange }) {
+  const pct = ((value - min) / (max - min)) * 100
+  const cls = 'sf-' + label.replace(/[^a-z0-9]/gi, '')
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <style>{`
+        .${cls} { -webkit-appearance:none; appearance:none; width:100%; height:3px; border-radius:2px; outline:none; cursor:pointer;
+          background: linear-gradient(to right, #555 0%, #555 ${pct}%, #1e1e1e ${pct}%, #1e1e1e 100%); }
+        .${cls}::-webkit-slider-thumb { -webkit-appearance:none; width:13px; height:13px; border-radius:50%; background:#888; border:none; cursor:pointer; transition:background 0.12s; }
+        .${cls}::-webkit-slider-thumb:hover { background:#fff; }
+        .${cls}::-moz-range-thumb { width:13px; height:13px; border-radius:50%; background:#888; border:none; cursor:pointer; }
+        .${cls}::-moz-range-thumb:hover { background:#fff; }
+      `}</style>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <FieldLabel>{label}</FieldLabel>
-        <span style={{ fontFamily: 'Arial', fontSize: 22, color: '#fff', fontWeight: 'bold' }}>{display}</span>
+        <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#444', letterSpacing: 3 }}>{label}</span>
+        <span style={{ fontFamily: 'Arial', fontSize: 19, color: '#888', fontWeight: 'bold' }}>{display}</span>
       </div>
-      <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))} style={{ accentColor: '#fff', width: '100%' }} />
+      <input type="range" min={min} max={max} step={step} value={value}
+        className={cls}
+        onChange={e => onChange(Number(e.target.value))} />
     </div>
   )
 }
