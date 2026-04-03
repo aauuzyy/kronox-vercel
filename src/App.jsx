@@ -938,7 +938,7 @@ function CatalogPanel({ onBack, onPlay, onPreview }) {
 }
 
 // ─── SetupPanel ───────────────────────────────────────────────────────────────
-function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPublish }) {
+function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPublish, musicVolume, sfxVolume }) {
   const activeLaneColors = (Array.isArray(savedLaneColors) && savedLaneColors.length === 4) ? savedLaneColors : LANE_COLORS
   const [songFile,    setSongFile]    = useState(null)
   const [previewPos,  setPreviewPos]  = useState(0)
@@ -1018,12 +1018,18 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     if (audioRef.current) { audioRef.current.pause() }
     const url = URL.createObjectURL(file)
     const audio = new Audio(url)
+    audio.volume = musicVolume ?? 1.0
     audio.addEventListener('timeupdate', () => setPreviewPos(audio.currentTime))
     audio.addEventListener('play',  () => setIsPlaying(true))
     audio.addEventListener('pause', () => setIsPlaying(false))
     audio.addEventListener('ended', () => setIsPlaying(false))
     audioRef.current = audio
   }
+
+  // Keep audio volume in sync when the setting changes
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.volume = musicVolume ?? 1.0
+  }, [musicVolume])
 
   useEffect(() => {
     const newSize = beats * subdivision
@@ -2743,6 +2749,8 @@ export default function App() {
           <SetupPanel
             keybinds={keybinds}
             laneColors={laneColors}
+            musicVolume={musicVolume}
+            sfxVolume={sfxVolume}
             onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume, scrollDown }); setScreen('game') }}
             onOpenPublish={cfg => { setPublishConfig(cfg); setShowPublish(true) }}
           />
