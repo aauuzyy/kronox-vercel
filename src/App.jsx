@@ -1074,107 +1074,94 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       const raw = decoded.getChannelData(0)
       const actualRate = decoded.sampleRate
 
-      const secPerStep     = 60 / (bpm * subdivision)
-      const totalSteps     = beats * subdivision
-      const samplesPerStep = Math.floor(secPerStep * actualRate)
+      // ── Same beat detection as the star pulse system ──────────────────────
+      // Process every 1024 samples (~23ms at 44100Hz), identical to the analyser
+      const FRAME = 1024
+      const nFrames = Math.floor(raw.length / FRAME)
+      const frameTimes = []
+      let base = 0
+      for (let f = 0; f < nFrames; f++) {
+        const start = f * FRAME
+        let sum = 0
+        for (let i = start; i < start + FRAME; i++) { const v = raw[i]; sum += v * v }
+        const rms = Math.sqrt(sum / FRAME)
+        if (base === 0) base = Math.max(rms, 0.001)
+        base = base * 0.997 + rms * 0.003
+        const onset = Math.max(0, (rms - base * 0.5) / Math.max(base * 1.5, 0.001))
+        if (onset > 0.25) frameTimes.push(f * FRAME / actualRate)
+      }
 
-      // ── RMS energy per step ───────────────────────────────────────────────
+      // ── Snap to nearest grid step, deduplicate ────────────────────────────
+      const secPerStep = 60 / (bpm * subdivision)
+      const totalSteps = beats * subdivision
+      const stepHits = new Map()
+      for (const t of frameTimes) {
+        const step = Math.round(t / secPerStep)
+        if (step < 2 || step >= totalSteps) continue
+        const dist = Math.abs(t - step * secPerStep)
+        const existing = stepHits.get(step)
+        if (!existing || dist < Math.abs(existing - step * secPerStep)) stepHits.set(step, t)
+      }
+      let onsets = [...stepHits.keys()].sort((a, b) => a - b)
+
+      // ── Density guard: target ~70%, fill sparse songs ─────────────────────
+      const samplesPerStep = Math.floor(secPerStep * actualRate)
       const stepEnergy = new Float32Array(totalSteps)
       for (let i = 0; i < totalSteps; i++) {
-        const start = i * samplesPerStep
-        const end   = Math.min(start + samplesPerStep, raw.length)
+        const s = i * samplesPerStep
+        const e = Math.min(s + samplesPerStep, raw.length)
         let sum = 0
-        for (let j = start; j < end; j++) sum += raw[j] ** 2
-        stepEnergy[i] = Math.sqrt(sum / Math.max(1, end - start))
+        for (let j = s; j < e; j++) sum += raw[j] ** 2
+        stepEnergy[i] = Math.sqrt(sum / Math.max(1, e - s))
       }
-
-      // ── Onset flux (positive energy jump vs previous step) ────────────────
-      const flux = new Float32Array(totalSteps)
-      for (let i = 1; i < totalSteps; i++)
-        flux[i] = Math.max(0, stepEnergy[i] - stepEnergy[i - 1])
-
-      // ── Adaptive local average (2-beat window) ────────────────────────────
-      const WIN = Math.max(2, subdivision * 2)
-      const smoothFlux = new Float32Array(totalSteps)
-      for (let i = 0; i < totalSteps; i++) {
-        let s = 0, c = 0
-        for (let k = Math.max(0, i - WIN); k <= Math.min(totalSteps - 1, i + WIN); k++) {
-          s += flux[k]; c++
+      const targetCount = Math.round(totalSteps * 0.70)
+      if (onsets.length < targetCount * 0.5) {
+        const maxRMS = Math.max(...stepEnergy)
+        const filled = new Set(onsets)
+        for (let i = 2; i < totalSteps; i++) {
+          if (!filled.has(i) && stepEnergy[i] >= maxRMS * 0.35) filled.add(i)
         }
-        smoothFlux[i] = s / c
+        onsets = [...filled].sort((a, b) => a - b)
+      }
+      if (onsets.length > Math.round(totalSteps * 0.85)) {
+        const scored = onsets.map(s => [s, stepEnergy[s]]).sort((a, b) => b[1] - a[1])
+        const keep = new Set(scored.slice(0, Math.round(totalSteps * 0.85)).map(([s]) => s))
+        onsets = onsets.filter(s => keep.has(s))
       }
 
-      // ── Pick onsets: any step where flux > local avg * 1.05 ──────────────
-      // MIN_GAP = 1 subdivision (e.g. 1 eighth-note), allows back-to-back notes
-      const MIN_GAP = 1
-      const onsets = []
-      let lastOnset = -MIN_GAP
-      for (let i = 4; i < totalSteps; i++) {
-        if (flux[i] > smoothFlux[i] * 1.05 && flux[i] > 0 && i - lastOnset >= MIN_GAP) {
-          onsets.push(i)
-          lastOnset = i
-        }
-      }
-
-      // ── Density guard: target 55-70% of steps having a note ──────────────
-      const targetDensity = 0.62
-      const target = Math.round(totalSteps * targetDensity)
-      if (onsets.length < target * 0.5) {
-        // Too sparse — fill in the top-N flux steps
-        const indexedFlux = Array.from(flux, (v, i) => [i, v])
-          .filter(([i]) => i >= 4)
-          .sort((a, b) => b[1] - a[1])
-        const inOnsets = new Set(onsets)
-        for (const [i] of indexedFlux) {
-          if (onsets.length >= target) break
-          if (!inOnsets.has(i)) { onsets.push(i); inOnsets.add(i) }
-        }
-        onsets.sort((a, b) => a - b)
-      } else if (onsets.length > target * 1.2) {
-        // Too dense — keep only top-N by flux value
-        const ranked = onsets.map(i => [i, flux[i]]).sort((a, b) => b[1] - a[1])
-        const keep = new Set(ranked.slice(0, target).map(([i]) => i))
-        onsets.length = 0
-        for (let i = 0; i < totalSteps; i++) if (keep.has(i)) onsets.push(i)
-      }
-
-      // ── Hold note detection: measure how long energy stays elevated ───────
-      // A step gets a hold if the energy stays above 80% of its peak for
-      // multiple consecutive steps (sustained chord / bass note)
-      const holdLengths = new Int32Array(totalSteps) // 0 = tap, >1 = hold length
+      // ── Hold note detection ───────────────────────────────────────────────
+      const holdAt = new Map()
+      const onsetSet = new Set(onsets)
       for (const step of onsets) {
         const peak = stepEnergy[step]
-        if (peak < 0.01) continue
+        if (peak < 0.005) continue
         let len = 1
-        for (let k = step + 1; k < totalSteps && k < step + subdivision * 4; k++) {
-          if (stepEnergy[k] >= peak * 0.70 && !onsets.includes(k)) len++
+        for (let k = step + 1; k < totalSteps && k < step + subdivision * 8; k++) {
+          if (stepEnergy[k] >= peak * 0.65 && !onsetSet.has(k)) len++
           else break
         }
-        if (len >= subdivision) holdLengths[step] = len  // only hold if ≥ 1 beat long
+        if (len >= subdivision * 2) holdAt.set(step, len)
       }
 
       // ── Build chart ───────────────────────────────────────────────────────
       undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
       const newChart = buildChart(totalSteps)
       let prevLane = -1
-      // Track which steps are consumed by hold tails so we skip them
       const consumed = new Set()
       for (const step of onsets) {
         if (consumed.has(step)) continue
         let lane = Math.floor(Math.random() * 4)
         if (lane === prevLane) lane = (lane + 1 + Math.floor(Math.random() * 3)) % 4
-        const holdLen = holdLengths[step]
-        if (holdLen >= subdivision) {
-          // Write hold: head cell = length, tail cells = -1
+        prevLane = lane
+        const holdLen = holdAt.get(step) || 0
+        if (holdLen >= subdivision * 2) {
           newChart[step][lane] = holdLen
           for (let k = step + 1; k < step + holdLen && k < totalSteps; k++) {
-            newChart[k][lane] = -1
-            consumed.add(k)
+            newChart[k][lane] = -1; consumed.add(k)
           }
         } else {
           newChart[step][lane] = 1
         }
-        prevLane = lane
       }
       setChart(newChart); saveSettings({ chart: newChart })
     } catch (err) {
