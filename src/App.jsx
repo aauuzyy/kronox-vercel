@@ -1316,8 +1316,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const startRecording = () => {
     if (!songFile || !audioRef.current) return
     audioRef.current.currentTime = 0
-    audioRef.current.playbackRate = 1.0
-    setIsSlowMode(false)
+    // Start in slow mode by default so you can toggle it off mid-recording
+    audioRef.current.playbackRate = slowModeSpeed
+    setIsSlowMode(true)
     recordChartRef.current = buildChart(beats * subdivision)
     recordKeyDownRef.current = {}
     setRecordChart(null)
