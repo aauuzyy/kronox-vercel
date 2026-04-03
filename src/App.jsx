@@ -1069,49 +1069,82 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     setAiGenerating(true)
     try {
       const arrayBuf = await songFile.arrayBuffer()
-      const ctx = new OfflineAudioContext(1, 1, 44100)
+      const sampleRate = 44100
+      const ctx = new OfflineAudioContext(1, 1, sampleRate)
       const decoded = await ctx.decodeAudioData(arrayBuf)
-      const sRate = decoded.sampleRate
       const raw = decoded.getChannelData(0)
-      const FRAME = Math.floor(sRate * 0.02)   // 20ms frames
-      const HOP   = Math.floor(FRAME / 2)
-      const nFrames = Math.floor((raw.length - FRAME) / HOP)
-      const energy = new Float32Array(nFrames)
-      for (let i = 0; i < nFrames; i++) {
-        let sum = 0
-        const start = i * HOP
-        for (let j = start; j < start + FRAME; j++) sum += raw[j] ** 2
-        energy[i] = Math.sqrt(sum / FRAME)
-      }
-      // Smooth
-      const sm = new Float32Array(nFrames)
-      const W = 5
-      for (let i = 0; i < nFrames; i++) {
-        let s = 0, c = 0
-        for (let k = Math.max(0, i-W); k < Math.min(nFrames, i+W); k++) { s += energy[k]; c++ }
-        sm[i] = s / c
-      }
-      // Detect onsets: energy > local average * threshold and local max
-      const THRESH = 1.5
-      const beatTimes = []
-      for (let i = 1; i < nFrames - 1; i++) {
-        if (energy[i] > sm[i] * THRESH && energy[i] >= energy[i-1] && energy[i] >= energy[i+1]) {
-          beatTimes.push(i * HOP / sRate)
-        }
-      }
-      // Build chart from beat times
+      const actualRate = decoded.sampleRate
+
+      // ── Step 1: compute RMS energy at each beat-grid step ─────────────────
+      // We know the BPM, so snap energy measurements to the musical grid.
       const secPerStep = 60 / (bpm * subdivision)
       const totalSteps = beats * subdivision
+      const samplesPerStep = Math.floor(secPerStep * actualRate)
+      const stepEnergy = new Float32Array(totalSteps)
+      for (let i = 0; i < totalSteps; i++) {
+        const start = i * samplesPerStep
+        const end   = Math.min(start + samplesPerStep, raw.length)
+        let sum = 0
+        for (let j = start; j < end; j++) sum += raw[j] ** 2
+        stepEnergy[i] = Math.sqrt(sum / Math.max(1, end - start))
+      }
+
+      // ── Step 2: compute onset flux (positive energy increase vs prev step) ─
+      const flux = new Float32Array(totalSteps)
+      for (let i = 1; i < totalSteps; i++) {
+        flux[i] = Math.max(0, stepEnergy[i] - stepEnergy[i - 1])
+      }
+
+      // ── Step 3: adaptive threshold using a large sliding window (≈1 bar) ──
+      const WIN = Math.max(4, subdivision * 4)   // 4 beats worth of steps
+      const smoothFlux = new Float32Array(totalSteps)
+      for (let i = 0; i < totalSteps; i++) {
+        let s = 0, c = 0
+        for (let k = Math.max(0, i - WIN); k <= Math.min(totalSteps - 1, i + WIN); k++) {
+          s += flux[k]; c++
+        }
+        smoothFlux[i] = s / c
+      }
+
+      // ── Step 4: pick onsets — flux must exceed local average by THRESH ────
+      const THRESH = 1.2
+      // Also enforce minimum gap of 1 step between notes (no 32nd-note spam)
+      const MIN_GAP = Math.max(1, Math.round(subdivision / 2))
+      const onsets = []
+      let lastOnset = -MIN_GAP
+      for (let i = 8; i < totalSteps; i++) {
+        if (flux[i] > smoothFlux[i] * THRESH && flux[i] > 0 && i - lastOnset >= MIN_GAP) {
+          onsets.push(i)
+          lastOnset = i
+        }
+      }
+
+      // ── Step 5: density guard — if too sparse, lower threshold; too dense, raise ──
+      const targetDensity = 0.30   // aim for ~30% of steps having a note
+      const target = Math.round(totalSteps * targetDensity)
+      if (onsets.length < target * 0.4 || onsets.length > target * 2.5) {
+        // Fall back to percentile-based selection from flux
+        const sorted = [...flux].sort((a, b) => b - a)
+        const cutoff = sorted[Math.min(target, sorted.length - 1)] || 0
+        onsets.length = 0
+        lastOnset = -MIN_GAP
+        for (let i = 8; i < totalSteps; i++) {
+          if (flux[i] >= cutoff && flux[i] > 0 && i - lastOnset >= MIN_GAP) {
+            onsets.push(i); lastOnset = i
+          }
+        }
+      }
+
+      // ── Step 6: assign lanes (spread evenly, avoid repeating same lane) ───
       undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
       const newChart = buildChart(totalSteps)
-      const used = new Set()
-      for (const t of beatTimes) {
-        const step = Math.round(t / secPerStep)
-        if (step < 8 || step >= totalSteps) continue
-        if (used.has(step)) continue
-        const lane = Math.floor(Math.random() * 4)
+      let prevLane = -1
+      for (const step of onsets) {
+        // Pick a random lane that isn't the same as previous
+        let lane = Math.floor(Math.random() * 4)
+        if (lane === prevLane) lane = (lane + 1 + Math.floor(Math.random() * 3)) % 4
         newChart[step][lane] = 1
-        used.add(step)
+        prevLane = lane
       }
       setChart(newChart); saveSettings({ chart: newChart })
     } catch (err) {

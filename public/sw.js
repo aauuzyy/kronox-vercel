@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kronox-v1'
+const CACHE_NAME = 'kronox-v2'
 
 // Assets to cache on install (shell only — audio files are not cached)
 const PRECACHE = [
@@ -32,6 +32,8 @@ self.addEventListener('fetch', e => {
   // Skip audio files and API calls — always network for those
   if (/\.(mp3|ogg|wav|aac|flac)$/i.test(url.pathname)) return
 
+  const isNavigation = e.request.mode === 'navigate'
+
   e.respondWith(
     caches.match(e.request).then(cached => {
       if (cached) return cached
@@ -41,7 +43,11 @@ self.addEventListener('fetch', e => {
           caches.open(CACHE_NAME).then(c => c.put(e.request, clone))
         }
         return res
-      }).catch(() => caches.match('/index.html'))
+      }).catch(() => {
+        // Only return the app shell for page navigations, never for JS/CSS/assets
+        if (isNavigation) return caches.match('/index.html')
+        return new Response('', { status: 503, statusText: 'Offline' })
+      })
     })
   )
 })
