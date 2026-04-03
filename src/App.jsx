@@ -1808,6 +1808,11 @@ function GameView({ config, onStop }) {
           audioRef.current.currentTime = config.audioStartOffset
         }
         audioRef.current?.play().catch(() => {})
+        // Belt-and-suspenders: if the unlock .then() raced and paused the audio,
+        // re-start playback 250ms later once the promise chain has settled.
+        setTimeout(() => {
+          if (audioRef.current?.paused && gameStartedRef.current) audioRef.current.play().catch(() => {})
+        }, 250)
         if (config.previewDuration) {
           setTimeout(() => {
             cancelAnimationFrame(rafRef.current)
@@ -1957,7 +1962,14 @@ function GameView({ config, onStop }) {
     // mount (which fires synchronously from the user-gesture that started
     // the game) keeps the gesture context alive so the delayed .play()
     // inside the countdown timer is allowed by the browser.
-    audio.play().then(() => { audio.pause(); audio.currentTime = 0 }).catch(() => {})
+    // IMPORTANT: only reset currentTime=0 if the GO handler hasn't fired yet —
+    // for streaming CORS audio the .then() can resolve *after* the GO handler
+    // has already seeked to audioStartOffset and called play(), so we must not
+    // overwrite that seek or pause the playback.
+    audio.play().then(() => {
+      audio.pause()
+      if (!gameStartedRef.current) audio.currentTime = 0
+    }).catch(() => {})
     connectAnalyser(audio)
 
     const subdivision = config.subdivision || 1
