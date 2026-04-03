@@ -1072,29 +1072,6 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
 
   // ── Record mode ───────────────────────────────────────────────────────────
   const HOLD_THRESHOLD_MS = 200
-
-  const recordTouchDown = useCallback((lane) => {
-    if (!isRecording || !recordChartRef.current) return
-    const subdivMs = (60000 / bpm) / subdivision
-    const nowMs = audioRef.current?.currentTime * 1000 || 0
-    const ci = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
-    recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
-  }, [isRecording, bpm, subdivision])
-
-  const recordTouchUp = useCallback((lane) => {
-    if (!isRecording || !recordChartRef.current) return
-    const info = recordKeyDownRef.current[lane]; if (!info) return
-    delete recordKeyDownRef.current[lane]
-    const subdivMs = (60000 / bpm) / subdivision
-    const nowMs = audioRef.current?.currentTime * 1000 || 0
-    const endCi = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
-    const newChart = recordChartRef.current.map(r => [...r])
-    if (nowMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
-      newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
-      for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
-    } else { newChart[info.subdivIdx][lane] = 1 }
-    recordChartRef.current = newChart
-  }, [isRecording, bpm, subdivision, HOLD_THRESHOLD_MS])
   const [isRecording,     setIsRecording]     = useState(false)
   const [recordCountdown, setRecordCountdown] = useState(null)
   const recordChartRef   = useRef(null)
@@ -1133,6 +1110,29 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     if (recordChartRef.current) setRecordChart(recordChartRef.current)
     recordKeyDownRef.current = {}
   }, [])
+
+  const recordTouchDown = useCallback((lane) => {
+    if (!isRecording || !recordChartRef.current) return
+    const subdivMs = (60000 / bpm) / subdivision
+    const nowMs = audioRef.current?.currentTime * 1000 || 0
+    const ci = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
+    recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
+  }, [isRecording, bpm, subdivision])
+
+  const recordTouchUp = useCallback((lane) => {
+    if (!isRecording || !recordChartRef.current) return
+    const info = recordKeyDownRef.current[lane]; if (!info) return
+    delete recordKeyDownRef.current[lane]
+    const subdivMs = (60000 / bpm) / subdivision
+    const nowMs = audioRef.current?.currentTime * 1000 || 0
+    const endCi = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
+    const newChart = recordChartRef.current.map(r => [...r])
+    if (nowMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
+      newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
+      for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
+    } else { newChart[info.subdivIdx][lane] = 1 }
+    recordChartRef.current = newChart
+  }, [isRecording, bpm, subdivision, HOLD_THRESHOLD_MS])
 
   useEffect(() => {
     if (!isRecording) return
