@@ -149,7 +149,7 @@ function TitleBarBtn({ onClick, children, active }) {
 }
 
 // ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
-function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, onChange, onClose }) {
+function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, scrollDown, onChange, onClose }) {
   const [keys,      setKeys]      = useState([...keybinds])
   const [listening, setListening] = useState(null)
   const [conflict,  setConflict]  = useState(null)
@@ -277,19 +277,32 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
 
         {/* VISUALS */}
         <SectionLabel>VISUALS</SectionLabel>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Star field</span>
-          <button
-            onClick={() => onChange({ showStars: !showStars })}
-            style={{
-              fontFamily: 'Arial', fontSize: 7, letterSpacing: 2,
-              padding: '5px 14px', borderRadius: 4, cursor: 'pointer',
-              background: showStars ? '#ffffff' : 'transparent',
-              border: `1px solid ${showStars ? '#fff' : '#333'}`,
-              color: showStars ? '#111' : '#444',
-              fontWeight: showStars ? 'bold' : 'normal',
-            }}
-          >{showStars ? 'ON' : 'OFF'}</button>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Star field</span>
+            <button
+              onClick={() => onChange({ showStars: !showStars })}
+              style={{
+                fontFamily: 'Arial', fontSize: 7, letterSpacing: 2,
+                padding: '5px 14px', borderRadius: 4, cursor: 'pointer',
+                background: showStars ? '#ffffff' : 'transparent',
+                border: `1px solid ${showStars ? '#fff' : '#333'}`,
+                color: showStars ? '#111' : '#444',
+                fontWeight: showStars ? 'bold' : 'normal',
+              }}
+            >{showStars ? 'ON' : 'OFF'}</button>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Scroll direction</span>
+            <button
+              onClick={() => onChange({ scrollDown: !scrollDown })}
+              style={{
+                fontFamily: 'Arial', fontSize: 7, letterSpacing: 2,
+                padding: '5px 14px', borderRadius: 4, cursor: 'pointer',
+                background: 'transparent', border: '1px solid #333', color: '#666',
+              }}
+            >{scrollDown ? '▼ DOWN' : '▲ UP'}</button>
+          </div>
         </div>
 
         <Divider />
@@ -786,6 +799,35 @@ function CatalogPanel({ onBack, onPlay }) {
   const [sortBy,  setSortBy]  = useState('newest')
   const [myLikes, setMyLikes] = useState(new Set())
   const [likingId, setLikingId] = useState(null)
+  const [previewId, setPreviewId] = useState(null)
+  const previewTimerRef = useRef(null)
+  const previewAudioRef = useRef(null)
+
+  const stopPreview = () => {
+    clearTimeout(previewTimerRef.current)
+    if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null }
+    setPreviewId(null)
+  }
+
+  const togglePreview = (e, song) => {
+    e.stopPropagation()
+    if (previewId === song.id) { stopPreview(); return }
+    stopPreview()
+    if (!song.audioUrl) return
+    const audio = new Audio(song.audioUrl)
+    audio.volume = 0.7; audio.crossOrigin = 'anonymous'
+    previewAudioRef.current = audio
+    setPreviewId(song.id)
+    audio.addEventListener('loadedmetadata', () => {
+      const startAt = Math.max(0, (audio.duration / 2) - 7.5)
+      audio.currentTime = startAt
+      audio.play().catch(() => {})
+      previewTimerRef.current = setTimeout(() => stopPreview(), 15000)
+    })
+    audio.addEventListener('error', () => stopPreview())
+  }
+
+  useEffect(() => () => stopPreview(), [])
 
   useEffect(() => {
     let cancelled = false
@@ -898,6 +940,12 @@ function CatalogPanel({ onBack, onPlay }) {
                 style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: liked ? '#2a1a1a' : 'transparent', color: liked ? '#ff4466' : '#333', border: `1px solid ${liked ? '#ff446633' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s', display: 'flex', alignItems: 'center', gap: 5 }}>
                 ♥ {(song.likes || 0).toLocaleString()}
               </button>
+              {song.audioUrl && (
+                <button onClick={e => togglePreview(e, song)}
+                  style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: previewId === song.id ? '#4488ff22' : 'transparent', color: previewId === song.id ? '#6699ff' : '#444', border: `1px solid ${previewId === song.id ? '#4488ff44' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s' }}>
+                  {previewId === song.id ? '■' : '▷'}
+                </button>
+              )}
               <button onClick={() => onPlay(song)}
                 style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
                 PLAY
@@ -947,12 +995,40 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const [isSlowMode,       setIsSlowMode]       = useState(false)
   const [capturingSlowKey, setCapturingSlowKey] = useState(false)
 
+  const undoRef = useRef([])
+  const redoRef = useRef([])
+  const doUndo = () => {
+    if (!undoRef.current.length) return
+    const prev = undoRef.current[undoRef.current.length - 1]
+    undoRef.current = undoRef.current.slice(0, -1)
+    setChart(curr => { redoRef.current = [...redoRef.current, curr]; return prev })
+    localStorage.setItem('kronox-settings', JSON.stringify({ ...loadSettings(), chart: prev }))
+  }
+  const doRedo = () => {
+    if (!redoRef.current.length) return
+    const next = redoRef.current[redoRef.current.length - 1]
+    redoRef.current = redoRef.current.slice(0, -1)
+    setChart(curr => { undoRef.current = [...undoRef.current, curr]; return next })
+    localStorage.setItem('kronox-settings', JSON.stringify({ ...loadSettings(), chart: next }))
+  }
+
   const saveSettings = useCallback((overrides = {}) => {
     localStorage.setItem('kronox-settings', JSON.stringify({
       songTitle, speed, bpm, beats, subdivision, chart,
       audioFileName: saved.audioFileName, ...overrides,
     }))
   }, [songTitle, speed, bpm, beats, subdivision, chart, saved.audioFileName])
+
+  // Undo/redo keyboard shortcut
+  useEffect(() => {
+    const handler = e => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); doUndo() }
+      else if (e.key === 'y' || (e.key === 'z' && e.shiftKey)) { e.preventDefault(); doRedo() }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, []) // eslint-disable-line
 
   // Restore audio from IndexedDB
   useEffect(() => {
@@ -986,11 +1062,13 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
 
   const toggleCell = (b, l) => {
     if (!holdMode) {
+      undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
       setChart(prev => { const n = prev.map(r => [...r]); n[b][l] = n[b][l] ? 0 : 1; saveSettings({ chart: n }); return n })
     } else { setHoldStart({ b, l }) }
   }
   const endHold = bEnd => {
     if (!holdStart) return
+    undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
     const { b: bStart, l } = holdStart
     const start = Math.min(bStart, bEnd), end = Math.max(bStart, bEnd)
     setChart(prev => {
@@ -1003,10 +1081,71 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   }
 
   const randomizeChart = () => {
+    undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
     const c = chart.map((row, idx) => idx < 10 ? [0, 0, 0, 0] : row.map(() => Math.random() > 0.78 ? 1 : 0))
     setChart(c); saveSettings({ chart: c })
   }
-  const clearChart = () => { const c = buildChart(beats * subdivision); setChart(c); saveSettings({ chart: c }) }
+  const clearChart = () => {
+    undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
+    const c = buildChart(beats * subdivision); setChart(c); saveSettings({ chart: c })
+  }
+
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const generateAiChart = async () => {
+    if (!songFile || aiGenerating) return
+    setAiGenerating(true)
+    try {
+      const arrayBuf = await songFile.arrayBuffer()
+      const ctx = new OfflineAudioContext(1, 1, 44100)
+      const decoded = await ctx.decodeAudioData(arrayBuf)
+      const sRate = decoded.sampleRate
+      const raw = decoded.getChannelData(0)
+      const FRAME = Math.floor(sRate * 0.02)   // 20ms frames
+      const HOP   = Math.floor(FRAME / 2)
+      const nFrames = Math.floor((raw.length - FRAME) / HOP)
+      const energy = new Float32Array(nFrames)
+      for (let i = 0; i < nFrames; i++) {
+        let sum = 0
+        const start = i * HOP
+        for (let j = start; j < start + FRAME; j++) sum += raw[j] ** 2
+        energy[i] = Math.sqrt(sum / FRAME)
+      }
+      // Smooth
+      const sm = new Float32Array(nFrames)
+      const W = 5
+      for (let i = 0; i < nFrames; i++) {
+        let s = 0, c = 0
+        for (let k = Math.max(0, i-W); k < Math.min(nFrames, i+W); k++) { s += energy[k]; c++ }
+        sm[i] = s / c
+      }
+      // Detect onsets: energy > local average * threshold and local max
+      const THRESH = 1.5
+      const beatTimes = []
+      for (let i = 1; i < nFrames - 1; i++) {
+        if (energy[i] > sm[i] * THRESH && energy[i] >= energy[i-1] && energy[i] >= energy[i+1]) {
+          beatTimes.push(i * HOP / sRate)
+        }
+      }
+      // Build chart from beat times
+      const secPerStep = 60 / (bpm * subdivision)
+      const totalSteps = beats * subdivision
+      undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
+      const newChart = buildChart(totalSteps)
+      const used = new Set()
+      for (const t of beatTimes) {
+        const step = Math.round(t / secPerStep)
+        if (step < 8 || step >= totalSteps) continue
+        if (used.has(step)) continue
+        const lane = Math.floor(Math.random() * 4)
+        newChart[step][lane] = 1
+        used.add(step)
+      }
+      setChart(newChart); saveSettings({ chart: newChart })
+    } catch (err) {
+      console.error('AI chart error:', err)
+    }
+    setAiGenerating(false)
+  }
 
   const handleFile = e => {
     const f = e.target.files[0]; if (!f) return
@@ -1191,7 +1330,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     }
   }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed])
 
-  const applyRecordedChart   = () => { if (!recordChart) return; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
+  const applyRecordedChart   = () => { if (!recordChart) return; undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
   const discardRecordedChart = () => setRecordChart(null)
 
   const keyLabel = k => {
@@ -1271,9 +1410,12 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#66ff99', fontWeight: 'bold' }}>{isFinite(beats) ? beats : DEFAULT_BEATS} beats · {(isFinite(beats) ? beats : DEFAULT_BEATS) * subdivision} steps</div>
             <div style={{ display: 'flex', gap: 8 }}>
+              <SmallBtn onClick={doUndo} color="#555">↩ UNDO</SmallBtn>
+              <SmallBtn onClick={doRedo} color="#555">↪ REDO</SmallBtn>
               <SmallBtn onClick={() => setHoldMode(!holdMode)} color={holdMode ? '#ffd93d' : '#666'}>{holdMode ? 'HOLD MODE ●' : 'HOLD MODE'}</SmallBtn>
               <SmallBtn onClick={randomizeChart} color="#ff4d8f">RANDOM</SmallBtn>
               <SmallBtn onClick={clearChart} color="#666">CLEAR</SmallBtn>
+              {songFile && <SmallBtn onClick={generateAiChart} color={aiGenerating ? '#444' : '#aa66ff'}>{aiGenerating ? '...' : '\u2726 AI'}</SmallBtn>}
             </div>
           </div>
           {songFile && (
@@ -1513,6 +1655,7 @@ function GameView({ config, onStop }) {
     paused: false, completedBeats: new Set(),
     perfect: 0, good: 0, bad: 0, miss: 0, totalHits: 0,
     heldNotes: {},
+    hitOffsets: [],
   })
 
   // Countdown: 3 → 2 → 1 → 'GO' → null (game starts)
@@ -1530,6 +1673,7 @@ function GameView({ config, onStop }) {
   const RECEPTOR_BOTTOM = isMobile ? 50 : 70
 
   const [hud,             setHud]             = useState({ score: 0, combo: 0, multiplier: 1, health: 80 })
+  const [audioProgress,   setAudioProgress]   = useState({ current: 0, duration: 0 })
   const [judgment,        setJudgment]        = useState({ text: '', color: '#fff', visible: false, key: 0 })
   const [receptorPressed, setReceptorPressed] = useState([false, false, false, false])
   const [paused,          setPaused]          = useState(false)
@@ -1626,6 +1770,7 @@ function GameView({ config, onStop }) {
       score: s.score, perfect: s.perfect, good: s.good, bad: s.bad,
       miss: s.miss, totalHits: s.totalHits, accuracy,
       duration: audioRef.current?.duration || 0, songTitle: config.songTitle,
+      hitOffsets: [...s.hitOffsets],
     })
   }, [onStop, config.songTitle])
 
@@ -1697,9 +1842,10 @@ function GameView({ config, onStop }) {
     playHitSfx()
 
     let pts, text, color
-    if (minDist < 15)       { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++ }
-    else if (minDist < 45)  { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++ }
-    else if (minDist < 100) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++ }
+    const signedOffset = nowMs - closest.hitTimeMs
+    if (minDist < 15)       { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
+    else if (minDist < 45)  { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
+    else if (minDist < 100) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
     else                    { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
 
     s.score += pts * s.multiplier
@@ -1961,6 +2107,8 @@ function GameView({ config, onStop }) {
       }
       rafRef.current = requestAnimationFrame(loop)
     }
+    // update timeline every frame
+    setAudioProgress({ current: audio.currentTime, duration: audio.duration || 0 })
     rafRef.current = requestAnimationFrame(loop)
 
     const onKey = e => {
@@ -2023,7 +2171,8 @@ function GameView({ config, onStop }) {
         {/* Highway */}
         <div style={{
           position: 'absolute', top: 0, bottom: 0,
-          left: '50%', transform: 'translateX(-50%)',
+          left: '50%',
+          transform: config.scrollDown !== false ? 'translateX(-50%)' : 'translateX(-50%) scaleY(-1)',
           width: TOTAL_W, display: 'flex', gap: LANE_GAP,
         }}>
           {[0, 1, 2, 3].map(l => (
@@ -2039,7 +2188,9 @@ function GameView({ config, onStop }) {
               {/* Receptor */}
               <div style={{
                 position: 'absolute', bottom: RECEPTOR_BOTTOM, left: '50%',
-                transform: receptorPressed[l] ? 'translateX(-50%) scale(0.88)' : 'translateX(-50%) scale(1)',
+                transform: receptorPressed[l]
+                  ? `translateX(-50%) scale(0.88)${config.scrollDown !== false ? '' : ' scaleY(-1)'}`
+                  : `translateX(-50%) scale(1)${config.scrollDown !== false ? '' : ' scaleY(-1)'}`,
                 width: NOTE_SIZE, height: NOTE_SIZE, borderRadius: '50%',
                 border: `2px solid ${receptorPressed[l] ? laneColors[l] : laneColors[l] + '44'}`,
                 background: receptorPressed[l] ? laneColors[l] + '20' : 'transparent',
@@ -2084,6 +2235,23 @@ function GameView({ config, onStop }) {
             <div style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', fontWeight: 'bold' }}>{hud.score.toLocaleString()}</div>
           </div>
         </div>
+
+        {/* Song progress bar */}
+        {audioProgress.duration > 0 && (() => {
+          const pct = Math.min(1, audioProgress.current / audioProgress.duration)
+          const fmt = s => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`
+          return (
+            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 11 }}>
+              <div style={{ height: 2, background: '#0d0d0d' }}>
+                <div style={{ height: '100%', width: `${pct * 100}%`, background: pct >= 1 ? '#66ff99' : '#ffffff22', transition: 'width 0.25s linear, background 0.3s' }} />
+              </div>
+              <div style={{ position: 'absolute', top: 4, right: 10, display: 'flex', gap: 4, alignItems: 'baseline', pointerEvents: 'none' }}>
+                <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#fff', fontWeight: 'bold' }}>{fmt(audioProgress.current)}</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#333' }}>/ {fmt(audioProgress.duration)}</span>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Judgment text */}
         <div key={judgment.key} style={{
@@ -2161,6 +2329,13 @@ function Results({ stats, onExit, onPlayAgain }) {
   const gradeColor = GRADE_COLORS[grade] || '#888'
   const total      = Math.max(stats.totalHits, 1)
 
+  const pbKey     = `kronox-pb-${stats.songTitle}`
+  const savedPb   = parseInt(localStorage.getItem(pbKey) || '0', 10)
+  const isNewBest = !stats.autoplay && stats.score > savedPb
+  useEffect(() => {
+    if (isNewBest) localStorage.setItem(pbKey, String(stats.score))
+  }, []) // eslint-disable-line
+
   const judgments = [
     { label: 'PERFECT', value: stats.perfect, pct: ((stats.perfect / total) * 100).toFixed(0), color: '#ffffff' },
     { label: 'GOOD',    value: stats.good,    pct: ((stats.good    / total) * 100).toFixed(0), color: '#aaaaaa' },
@@ -2231,6 +2406,75 @@ function Results({ stats, onExit, onPlayAgain }) {
           </div>
         ))}
       </div>
+
+      {/* Buttons */}
+      {/* Early/late timing graph */}
+      {stats.hitOffsets && stats.hitOffsets.length > 0 && (
+        <div style={{ padding: window.innerWidth < 600 ? '0 20px 20px' : '0 52px 24px', animation: 'slideUp 0.4s ease-out 0.28s both' }}>
+          <div style={{ fontSize: 7, letterSpacing: 3, color: '#333', marginBottom: 10 }}>HIT TIMING</div>
+          <div style={{ position: 'relative', height: 72, background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden' }}>
+            {(() => {
+              const offsets = stats.hitOffsets
+              const W = 1000, H = 72, MID = H / 2, SCALE = (H / 2 - 4) / 150
+              const dots = offsets.map((o, i) => {
+                const x = offsets.length === 1 ? W / 2 : (i / (offsets.length - 1)) * W
+                const y = MID - Math.max(-150, Math.min(150, o)) * SCALE
+                const col = Math.abs(o) < 15 ? '#ffffff' : o > 0 ? '#ff6666' : '#6699ff'
+                return <circle key={i} cx={x} cy={y} r={2.5} fill={col} fillOpacity={0.75} />
+              })
+              const avg = offsets.reduce((a, b) => a + b, 0) / offsets.length
+              const avgY = MID - Math.max(-150, Math.min(150, avg)) * SCALE
+              return (
+                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
+                  {/* zero line */}
+                  <line x1={0} y1={MID} x2={W} y2={MID} stroke="#222" strokeWidth={1} />
+                  {/* avg line */}
+                  <line x1={0} y1={avgY} x2={W} y2={avgY} stroke={avg > 0 ? '#ff4466' : '#4488ff'} strokeWidth={1} strokeDasharray="6 4" opacity={0.5} />
+                  {dots}
+                </svg>
+              )
+            })()}
+            <div style={{ position: 'absolute', top: 3, right: 8, fontFamily: 'Arial', fontSize: 8, color: '#333' }}>
+              avg {(stats.hitOffsets.reduce((a, b) => a + b, 0) / stats.hitOffsets.length).toFixed(1)}ms
+            </div>
+            <div style={{ position: 'absolute', top: 3, left: 8, fontFamily: 'Arial', fontSize: 7, color: '#6699ff' }}>EARLY</div>
+            <div style={{ position: 'absolute', bottom: 3, left: 8, fontFamily: 'Arial', fontSize: 7, color: '#ff6666' }}>LATE</div>
+          </div>
+        </div>
+      )}
+
+      {/* Early/late timing graph */}
+      {stats.hitOffsets && stats.hitOffsets.length > 0 && (
+        <div style={{ padding: window.innerWidth < 600 ? '0 20px 20px' : '0 52px 24px', animation: 'slideUp 0.4s ease-out 0.28s both' }}>
+          <div style={{ fontSize: 7, letterSpacing: 3, color: '#333', marginBottom: 10 }}>HIT TIMING</div>
+          <div style={{ position: 'relative', height: 72, background: '#0d0d0d', border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden' }}>
+            {(() => {
+              const offsets = stats.hitOffsets
+              const W = 1000, H = 72, MID = H / 2, SCALE = (H / 2 - 4) / 150
+              const avg = offsets.reduce((a, b) => a + b, 0) / offsets.length
+              const avgY = MID - Math.max(-150, Math.min(150, avg)) * SCALE
+              const dots = offsets.map((o, i) => {
+                const x = offsets.length === 1 ? W / 2 : (i / (offsets.length - 1)) * W
+                const y = MID - Math.max(-150, Math.min(150, o)) * SCALE
+                const col = Math.abs(o) < 15 ? '#ffffff' : o < 0 ? '#6699ff' : '#ff6666'
+                return <circle key={i} cx={x} cy={y} r={2.5} fill={col} fillOpacity={0.75} />
+              })
+              return (
+                <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', height: '100%', display: 'block' }}>
+                  <line x1={0} y1={MID} x2={W} y2={MID} stroke="#222" strokeWidth={1} />
+                  <line x1={0} y1={avgY} x2={W} y2={avgY} stroke={avg > 0 ? '#ff4466' : '#4488ff'} strokeWidth={1} strokeDasharray="6 4" opacity={0.5} />
+                  {dots}
+                </svg>
+              )
+            })()}
+            <div style={{ position: 'absolute', top: 3, right: 8, fontFamily: 'Arial', fontSize: 8, color: '#333' }}>
+              avg {(stats.hitOffsets.reduce((a, b) => a + b, 0) / stats.hitOffsets.length).toFixed(1)}ms
+            </div>
+            <div style={{ position: 'absolute', top: 3, left: 8, fontFamily: 'Arial', fontSize: 7, color: '#6699ff' }}>EARLY</div>
+            <div style={{ position: 'absolute', bottom: 3, left: 8, fontFamily: 'Arial', fontSize: 7, color: '#ff6666' }}>LATE</div>
+          </div>
+        </div>
+      )}
 
       {/* Buttons */}
       <div style={{ display: 'flex', gap: 10, padding: window.innerWidth < 600 ? '0 20px' : '0 52px', marginTop: 'auto', paddingBottom: 40, animation: 'slideUp 0.4s ease-out 0.3s both' }}>
@@ -2315,6 +2559,7 @@ export default function App() {
   const [sfxVolume,   setSfxVolume]   = useState(saved.sfxVolume   ?? 0.7)
   const [musicVolume, setMusicVolume] = useState(saved.musicVolume ?? 1.0)
   const [showStars,   setShowStars]   = useState(saved.showStars   !== false)
+  const [scrollDown,  setScrollDown]  = useState(saved.scrollDown  !== false)
 
   const handleSettingsChange = patch => {
     const next = { ...loadSettings(), ...patch }
@@ -2323,6 +2568,7 @@ export default function App() {
     if (patch.sfxVolume   !== undefined) setSfxVolume(patch.sfxVolume)
     if (patch.musicVolume !== undefined) setMusicVolume(patch.musicVolume)
     if (patch.showStars   !== undefined) setShowStars(patch.showStars)
+    if (patch.scrollDown  !== undefined) setScrollDown(patch.scrollDown)
     localStorage.setItem('kronox-settings', JSON.stringify(next))
   }
 
@@ -2352,6 +2598,7 @@ export default function App() {
       chart:       song.chart,
       keybinds, laneColors, sfxVolume, musicVolume,
       autoplay,
+      scrollDown,
     })
     setScreen('game')
   }
@@ -2375,7 +2622,7 @@ export default function App() {
           <SetupPanel
             keybinds={keybinds}
             laneColors={laneColors}
-            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume }); setScreen('game') }}
+            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume, scrollDown }); setScreen('game') }}
             onOpenPublish={cfg => { setPublishConfig(cfg); setShowPublish(true) }}
           />
         )}
@@ -2404,6 +2651,7 @@ export default function App() {
         sfxVolume={sfxVolume}
         musicVolume={musicVolume}
         showStars={showStars}
+        scrollDown={scrollDown}
         onChange={handleSettingsChange}
         onClose={() => setShowSettings(false)}
       />

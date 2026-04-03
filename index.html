@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>KRONOX</title>
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#111111" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="KRONOX" />
+  <link rel="apple-touch-icon" href="/icon-192.png" />
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='18' fill='%23111'/><text y='72' x='50' text-anchor='middle' font-size='62' font-family='Arial Black,sans-serif' font-weight='900' fill='%23ffffff'>K</text></svg>" />
   <style>
     html, body, #root {
@@ -25,6 +32,9 @@
 </head>
 <body>
   <div id="root"></div>
+  <script>
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {})
+  </script>
   <script type="module" src="/src/main.jsx"></script>
 </body>
 </html>
