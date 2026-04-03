@@ -34,20 +34,32 @@ self.addEventListener('fetch', e => {
 
   const isNavigation = e.request.mode === 'navigate'
 
-  e.respondWith(
-    caches.match(e.request).then(cached => {
-      if (cached) return cached
-      return fetch(e.request).then(res => {
-        if (res.ok && res.status < 400) {
+  // Navigation requests (page loads): network-first so index.html is always fresh.
+  // This prevents stale cached HTML referencing old JS bundle hashes after a deploy.
+  if (isNavigation) {
+    e.respondWith(
+      fetch(e.request).then(res => {
+        if (res.ok) {
           const clone = res.clone()
           caches.open(CACHE_NAME).then(c => c.put(e.request, clone))
         }
         return res
-      }).catch(() => {
-        // Only return the app shell for page navigations, never for JS/CSS/assets
-        if (isNavigation) return caches.match('/index.html')
-        return new Response('', { status: 503, statusText: 'Offline' })
-      })
+      }).catch(() => caches.match('/index.html'))
+    )
+    return
+  }
+
+  // Static assets (JS/CSS/icons): cache-first, fallback to network
+  e.respondWith(
+    caches.match(e.request).then(cached => {
+      if (cached) return cached
+      return fetch(e.request).then(res => {
+        if (res.ok) {
+          const clone = res.clone()
+          caches.open(CACHE_NAME).then(c => c.put(e.request, clone))
+        }
+        return res
+      }).catch(() => new Response('', { status: 503, statusText: 'Offline' }))
     })
   )
 })
