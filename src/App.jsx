@@ -791,7 +791,7 @@ function PublishModal({ config, onClose }) {
 }
 
 // ─── Catalog Panel ────────────────────────────────────────────────────────────
-function CatalogPanel({ onBack, onPlay }) {
+function CatalogPanel({ onBack, onPlay, onPreview }) {
   const [songs,   setSongs]   = useState([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
@@ -799,35 +799,6 @@ function CatalogPanel({ onBack, onPlay }) {
   const [sortBy,  setSortBy]  = useState('newest')
   const [myLikes, setMyLikes] = useState(new Set())
   const [likingId, setLikingId] = useState(null)
-  const [previewId, setPreviewId] = useState(null)
-  const previewTimerRef = useRef(null)
-  const previewAudioRef = useRef(null)
-
-  const stopPreview = () => {
-    clearTimeout(previewTimerRef.current)
-    if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null }
-    setPreviewId(null)
-  }
-
-  const togglePreview = (e, song) => {
-    e.stopPropagation()
-    if (previewId === song.id) { stopPreview(); return }
-    stopPreview()
-    if (!song.audioUrl) return
-    const audio = new Audio(song.audioUrl)
-    audio.volume = 0.7; audio.crossOrigin = 'anonymous'
-    previewAudioRef.current = audio
-    setPreviewId(song.id)
-    audio.addEventListener('loadedmetadata', () => {
-      const startAt = Math.max(0, (audio.duration / 2) - 7.5)
-      audio.currentTime = startAt
-      audio.play().catch(() => {})
-      previewTimerRef.current = setTimeout(() => stopPreview(), 15000)
-    })
-    audio.addEventListener('error', () => stopPreview())
-  }
-
-  useEffect(() => () => stopPreview(), [])
 
   useEffect(() => {
     let cancelled = false
@@ -937,13 +908,15 @@ function CatalogPanel({ onBack, onPlay }) {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
               <button onClick={e => handleLike(e, song)} disabled={!!likingId}
-                style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: liked ? '#2a1a1a' : 'transparent', color: liked ? '#ff4466' : '#333', border: `1px solid ${liked ? '#ff446633' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s', display: 'flex', alignItems: 'center', gap: 5 }}>
-                ♥ {(song.likes || 0).toLocaleString()}
+                style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 8px', borderRadius: 5, background: liked ? '#2a1a1a' : 'transparent', color: liked ? '#ff4466' : '#333', border: `1px solid ${liked ? '#ff446633' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                <span>♥</span><span style={{ fontSize: 10 }}>{(song.likes || 0).toLocaleString()}</span>
               </button>
-              {song.audioUrl && (
-                <button onClick={e => togglePreview(e, song)}
-                  style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: previewId === song.id ? '#4488ff22' : 'transparent', color: previewId === song.id ? '#6699ff' : '#444', border: `1px solid ${previewId === song.id ? '#4488ff44' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s' }}>
-                  {previewId === song.id ? '■' : '▷'}
+              {song.audioUrl && song.chart && (
+                <button onClick={e => { e.stopPropagation(); onPreview(song) }}
+                  style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: 'transparent', color: '#444', border: '1px solid #222', cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#6699ff'; e.currentTarget.style.borderColor = '#4488ff44' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#444'; e.currentTarget.style.borderColor = '#222' }}>
+                  ▷ 15s
                 </button>
               )}
               <button onClick={() => onPlay(song)}
@@ -1407,14 +1380,14 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       {/* Chart editor */}
       {activeTab === 'chart' && (
         <>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', flexDirection: window.innerWidth < 600 ? 'column' : 'row', alignItems: window.innerWidth < 600 ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 8 }}>
             <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#66ff99', fontWeight: 'bold' }}>{isFinite(beats) ? beats : DEFAULT_BEATS} beats · {(isFinite(beats) ? beats : DEFAULT_BEATS) * subdivision} steps</div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <SmallBtn onClick={doUndo} color="#555">↩ UNDO</SmallBtn>
-              <SmallBtn onClick={doRedo} color="#555">↪ REDO</SmallBtn>
-              <SmallBtn onClick={() => setHoldMode(!holdMode)} color={holdMode ? '#ffd93d' : '#666'}>{holdMode ? 'HOLD MODE ●' : 'HOLD MODE'}</SmallBtn>
-              <SmallBtn onClick={randomizeChart} color="#ff4d8f">RANDOM</SmallBtn>
-              <SmallBtn onClick={clearChart} color="#666">CLEAR</SmallBtn>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              <SmallBtn onClick={doUndo} color="#555">↩{window.innerWidth >= 600 ? ' UNDO' : ''}</SmallBtn>
+              <SmallBtn onClick={doRedo} color="#555">↪{window.innerWidth >= 600 ? ' REDO' : ''}</SmallBtn>
+              <SmallBtn onClick={() => setHoldMode(!holdMode)} color={holdMode ? '#ffd93d' : '#666'}>{holdMode ? (window.innerWidth < 600 ? 'HOLD ●' : 'HOLD MODE ●') : (window.innerWidth < 600 ? 'HOLD' : 'HOLD MODE')}</SmallBtn>
+              <SmallBtn onClick={randomizeChart} color="#ff4d8f">{window.innerWidth < 600 ? 'RND' : 'RANDOM'}</SmallBtn>
+              <SmallBtn onClick={clearChart} color="#666">{window.innerWidth < 600 ? 'CLR' : 'CLEAR'}</SmallBtn>
               {songFile && <SmallBtn onClick={generateAiChart} color={aiGenerating ? '#444' : '#aa66ff'}>{aiGenerating ? '...' : '\u2726 AI'}</SmallBtn>}
             </div>
           </div>
@@ -1731,7 +1704,18 @@ function GameView({ config, onStop }) {
       const t = setTimeout(() => {
         setCountdown(null)
         gameStartedRef.current = true
+        if (config.audioStartOffset && audioRef.current) {
+          audioRef.current.currentTime = config.audioStartOffset
+        }
         audioRef.current?.play().catch(() => {})
+        if (config.previewDuration) {
+          setTimeout(() => {
+            cancelAnimationFrame(rafRef.current)
+            if (audioRef.current) { audioRef.current.onended = null; audioRef.current.pause() }
+            stageRef.current?.querySelectorAll('.fnf-note,.fnf-hold-trail').forEach(n => n.remove())
+            onStop('preview', null)
+          }, config.previewDuration)
+        }
       }, 600)
       return () => clearTimeout(t)
     }
@@ -1995,6 +1979,11 @@ function GameView({ config, onStop }) {
           for (let l = 0; l < 4; l++) {
             const key  = `${b}-${l}`
             const cell = config.chart[b][l]
+            // Skip notes that are before the preview start offset
+            if (config.audioStartOffset && b * subdivMs < (config.audioStartOffset * 1000 - 500)) {
+              if (!s.completedBeats.has(key)) s.completedBeats.add(key)
+              continue
+            }
             if (cell > 0 && !s.completedBeats.has(key) && !s.activeNotes.find(n => n.beat === b && n.lane === l)) {
               s.activeNotes.push({
                 beat: b, lane: l,
@@ -2573,6 +2562,7 @@ export default function App() {
   }
 
   const handleGameStop = (status, stats) => {
+    if (status === 'preview') { setScreen('catalog'); return }
     if (status === 'complete') {
       const grade = calcGrade(stats.accuracy)
       if (!gameConfig?.autoplay) {
@@ -2584,6 +2574,24 @@ export default function App() {
     } else {
       setScreen('setup')
     }
+  }
+
+  const handlePreviewFromCatalog = (song) => {
+    const offset = song.duration ? Math.max(0, song.duration / 2 - 7.5) : 10
+    setGameConfig({
+      audioUrl:    song.audioUrl,
+      songTitle:   song.title,
+      bpm:         song.bpm,
+      subdivision: song.subdivision,
+      speed:       song.speed,
+      chart:       song.chart,
+      keybinds, laneColors, sfxVolume, musicVolume,
+      autoplay:    true,
+      scrollDown,
+      audioStartOffset: offset,
+      previewDuration:  15000,
+    })
+    setScreen('game')
   }
 
   const handlePlayFromCatalog = (song, autoplay = false) => {
@@ -2640,6 +2648,7 @@ export default function App() {
           <CatalogPanel
             onBack={() => setScreen('setup')}
             onPlay={handlePlayFromCatalog}
+            onPreview={handlePreviewFromCatalog}
           />
         )}
       </div>
