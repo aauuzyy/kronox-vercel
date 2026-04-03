@@ -1278,7 +1278,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
               </div>
             </div>
           )}
-          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', gap: 8, background: '#1a1a1a', borderRadius: 6, border: '1px solid #2a2a2a', padding: '12px', minHeight: window.innerWidth < 600 ? 220 : 0, maxHeight: window.innerWidth < 600 ? 280 : 340, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#1a1a1a', borderRadius: 6, border: '1px solid #2a2a2a', padding: '12px', minHeight: window.innerWidth < 600 ? 220 : 0, maxHeight: window.innerWidth < 600 ? 280 : 340, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(4, 1fr)', gap: 4 }}>
               <div />
               {['L', 'D', 'U', 'R'].map((n, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'center' }}><span style={{ fontFamily: 'Arial', fontSize: 7, color: LANE_COLORS[i], letterSpacing: 1 }}>{n}</span></div>))}
