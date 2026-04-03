@@ -2165,11 +2165,9 @@ function GameView({ config, onStop }) {
             }
           }
 
-          // Miss if scrolls past
-          if (!isBeingHeld && yFromBottom < -100 && !note.hit) doMiss(note)
-
-          // ── Autoplay: auto-hit at perfect timing ──────────────────────
-          if (config.autoplay && !note.hit && !isBeingHeld && Math.abs(note.hitTimeMs - nowMs) < 10) {
+          // ── Autoplay: auto-hit — check BEFORE miss so frame-rate gaps can't cause misses ──
+          // Window: hit when note is due within 50ms (covers ~3 frames at 60fps) OR already past.
+          if (config.autoplay && !note.hit && !isBeingHeld && note.hitTimeMs <= nowMs + 50) {
             const hitLane = note.lane
             flashLane(laneEls?.[hitLane])
             playHitSfx()
@@ -2190,6 +2188,9 @@ function GameView({ config, onStop }) {
               setTimeout(() => setReceptorPressed(p => { const n=[...p]; n[hitLane]=false; return n }), 120)
             }
           }
+
+          // Miss if scrolls past (only for manual play — autoplay can never miss)
+          if (!config.autoplay && !isBeingHeld && yFromBottom < -100 && !note.hit) doMiss(note)
         }
 
         s.activeNotes = s.activeNotes.filter(n => !n.hit)
