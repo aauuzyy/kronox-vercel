@@ -448,7 +448,7 @@ function CalibrationModal({ onClose }) {
         {phase === 'intro' && (
           <>
             <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#444', lineHeight: 1.8 }}>
-              A metronome will play at 80 BPM. Press <strong style={{ color: '#888' }}>SPACE</strong> on every beat (8 times). KRONOX will measure your natural offset and apply it automatically.
+              A metronome will play at 80 BPM. {window.innerWidth < 600 ? 'Tap the button' : <>Press <strong style={{ color: '#888' }}>SPACE</strong></>} on every beat (8 times). KRONOX will measure your natural offset and apply it automatically.
             </div>
             <button onClick={startTapping}
               style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', cursor: 'pointer' }}>
@@ -468,7 +468,15 @@ function CalibrationModal({ onClose }) {
                 <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: i < taps.length ? '#fff' : '#1e1e1e', transition: 'background 0.1s' }} />
               ))}
             </div>
-            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#444', textAlign: 'center' }}>Tap SPACE on every beat...</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#444', textAlign: 'center' }}>{window.innerWidth < 600 ? 'Tap the button on every beat...' : 'Tap SPACE on every beat...'}</div>
+            {window.innerWidth < 600 && (
+              <button
+                onTouchStart={e => { e.preventDefault(); handleTap() }}
+                onClick={handleTap}
+                style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none' }}>
+                TAP
+              </button>
+            )}
             <button onClick={() => { stopTapping(); setPhase('intro'); setTaps([]) }}
               style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '10px 0', borderRadius: 6, background: 'transparent', color: '#444', border: '1px solid #222', cursor: 'pointer' }}>
               CANCEL
@@ -1064,6 +1072,29 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
 
   // ── Record mode ───────────────────────────────────────────────────────────
   const HOLD_THRESHOLD_MS = 200
+
+  const recordTouchDown = useCallback((lane) => {
+    if (!isRecording || !recordChartRef.current) return
+    const subdivMs = (60000 / bpm) / subdivision
+    const nowMs = audioRef.current?.currentTime * 1000 || 0
+    const ci = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
+    recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
+  }, [isRecording, bpm, subdivision])
+
+  const recordTouchUp = useCallback((lane) => {
+    if (!isRecording || !recordChartRef.current) return
+    const info = recordKeyDownRef.current[lane]; if (!info) return
+    delete recordKeyDownRef.current[lane]
+    const subdivMs = (60000 / bpm) / subdivision
+    const nowMs = audioRef.current?.currentTime * 1000 || 0
+    const endCi = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
+    const newChart = recordChartRef.current.map(r => [...r])
+    if (nowMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
+      newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
+      for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
+    } else { newChart[info.subdivIdx][lane] = 1 }
+    recordChartRef.current = newChart
+  }, [isRecording, bpm, subdivision, HOLD_THRESHOLD_MS])
   const [isRecording,     setIsRecording]     = useState(false)
   const [recordCountdown, setRecordCountdown] = useState(null)
   const recordChartRef   = useRef(null)
@@ -1165,7 +1196,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       </div>
 
       {/* File + Title */}
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 600 ? '1fr' : '2fr 1fr', gap: '1rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
           <FieldLabel>SONG FILE</FieldLabel>
           <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 6, cursor: 'pointer', background: '#1a1a1a', border: `2px dashed ${songFile ? '#66ff99' : '#333'}`, transition: 'all 0.2s' }}>
@@ -1352,7 +1383,21 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
                   <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#888', marginTop: 2 }}>{Math.floor(previewPos)}s — tap or hold {keybinds.map(k => keyLabel(k)).join(', ')}</div>
                 </div>
               </div>
-              <LiveKeyDisplay keys={keybinds} keyLabels={keybinds.map(k => keyLabel(k))} names={LANE_NAMES} colors={activeLaneColors} />
+              {window.innerWidth >= 600 && <LiveKeyDisplay keys={keybinds} keyLabels={keybinds.map(k => keyLabel(k))} names={LANE_NAMES} colors={activeLaneColors} />}
+              {window.innerWidth < 600 && (
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[0, 1, 2, 3].map(lane => (
+                    <button key={lane}
+                      onTouchStart={e => { e.preventDefault(); recordTouchDown(lane) }}
+                      onTouchEnd={e => { e.preventDefault(); recordTouchUp(lane) }}
+                      onMouseDown={() => recordTouchDown(lane)}
+                      onMouseUp={() => recordTouchUp(lane)}
+                      style={{ flex: 1, height: 80, borderRadius: 8, background: activeLaneColors[lane] + '22', border: `2px solid ${activeLaneColors[lane]}`, color: activeLaneColors[lane], fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
+                      {LANE_NAMES[lane]}
+                    </button>
+                  ))}
+                </div>
+              )}
               {/* Slow mode toggle indicator */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <div style={{ padding: '7px 18px', borderRadius: 20, background: isSlowMode ? '#1f1f1f' : '#111', border: `1px solid ${isSlowMode ? '#ff4d8f44' : '#1a1a1a'}`, display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s' }}>
@@ -1385,7 +1430,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       )}
 
       {/* Bottom action bar */}
-      <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap', alignItems: 'center' }}>
+      <div style={{ display: 'flex', gap: 8, marginTop: window.innerWidth < 600 ? '0.5rem' : 'auto', flexWrap: 'wrap', alignItems: 'center' }}>
         <SmallBtn onClick={exportChart} color="#4d96ff">EXPORT CHART</SmallBtn>
         <label>
           <input ref={importInputRef} type="file" accept=".json" onChange={importChart} style={{ display: 'none' }} />
