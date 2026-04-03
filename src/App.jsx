@@ -92,7 +92,7 @@ const GRADE_COLORS = { 'S+': '#ffd700', 'S': '#c0c0c0', 'A': '#66ff99', 'B': '#4
 // ─── TitleBar ─────────────────────────────────────────────────────────────────
 function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderboard, onOpenHistory, onOpenCalibrate }) {
   const isMobile = window.innerWidth < 600
-  const [menuOpen, setMenuOpen] = React.useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
