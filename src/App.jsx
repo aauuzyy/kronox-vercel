@@ -42,6 +42,10 @@ function addPlayerGameResult(guestId, { score, accuracy, grade, perfect, good, b
     totalMiss:    prev.totalMiss    + (miss    || 0),
   }
   localStorage.setItem('kronox-player-stats', JSON.stringify(all))
+  // Mirror to global Supabase leaderboard (best-effort)
+  import('./supabase.js').then(({ upsertPlayerResult }) =>
+    upsertPlayerResult(guestId, { score, accuracy, grade, perfect, good, bad, miss })
+  ).catch(() => {})
 }
 function calcGrade(accuracy) {
   if (accuracy >= 95) return 'S+'
@@ -50,10 +54,43 @@ function calcGrade(accuracy) {
   if (accuracy >= 65) return 'B'
   return 'C'
 }
+
+// ── Difficulty rating (0.5 – 30) ──────────────────────────────────────────────
+function calcDifficulty(chart, bpm, speed, subdivision) {
+  if (!chart?.length) return 0
+  const noteCount = chart.flat().filter(v => v > 0).length
+  if (!noteCount) return 0
+  const stepDurSec  = 60 / Math.max(bpm, 1) / Math.max(subdivision, 1)
+  const songDurSec  = chart.length * stepDurSec
+  const density     = noteCount / Math.max(songDurSec, 1)           // notes/sec
+  const densityScore = Math.min(density / 12, 1) * 10               // 0–10
+  const bpmScore     = Math.min(Math.max(bpm - 60, 0) / 180, 1) * 10 // 0–10
+  const speedScore   = Math.min(Math.max(speed - 0.5, 0) / 4.5, 1) * 5 // 0–5
+  const subScore     = Math.min((subdivision - 1) / 7, 1) * 5       // 0–5
+  return Math.max(0.5, Math.round((densityScore + bpmScore + speedScore + subScore) * 10) / 10)
+}
+
+function diffColor(d) {
+  if (d < 5)  return '#66ff99'
+  if (d < 10) return '#ffd93d'
+  if (d < 18) return '#ff9933'
+  if (d < 24) return '#ff4466'
+  return '#cc44ff'
+}
+
+// ── Results history ───────────────────────────────────────────────────────────
+function loadHistory() {
+  try { return JSON.parse(localStorage.getItem('kronox-history') || '[]') } catch { return [] }
+}
+function saveHistoryEntry(entry) {
+  const h = loadHistory()
+  h.unshift(entry)
+  localStorage.setItem('kronox-history', JSON.stringify(h.slice(0, 20)))
+}
 const GRADE_COLORS = { 'S+': '#ffd700', 'S': '#c0c0c0', 'A': '#66ff99', 'B': '#4d96ff', 'C': '#888' }
 
 // ─── TitleBar ─────────────────────────────────────────────────────────────────
-function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderboard }) {
+function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderboard, onOpenHistory, onOpenCalibrate }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -62,8 +99,10 @@ function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderb
     }}>
       <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#ffffff', letterSpacing: 4 }}>KRONOX</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <TitleBarBtn onClick={onOpenHistory}>HISTORY</TitleBarBtn>
         <TitleBarBtn onClick={onOpenLeaderboard}>SCORES</TitleBarBtn>
         <TitleBarBtn onClick={onOpenCatalog}>CATALOG</TitleBarBtn>
+        <TitleBarBtn onClick={onOpenCalibrate}>CALIBRATE</TitleBarBtn>
         <TitleBarBtn onClick={onToggleSettings} active={settingsOpen}>SETTINGS</TitleBarBtn>
       </div>
     </div>
@@ -81,7 +120,7 @@ function TitleBarBtn({ onClick, children, active }) {
 }
 
 // ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
-function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, onChange, onClose }) {
+function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, onChange, onClose }) {
   const [keys,      setKeys]      = useState([...keybinds])
   const [listening, setListening] = useState(null)
   const [conflict,  setConflict]  = useState(null)
@@ -207,6 +246,25 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, onC
 
         <Divider />
 
+        {/* VISUALS */}
+        <SectionLabel>VISUALS</SectionLabel>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Star field</span>
+          <button
+            onClick={() => onChange({ showStars: !showStars })}
+            style={{
+              fontFamily: 'Arial', fontSize: 7, letterSpacing: 2,
+              padding: '5px 14px', borderRadius: 4, cursor: 'pointer',
+              background: showStars ? '#ffffff' : 'transparent',
+              border: `1px solid ${showStars ? '#fff' : '#333'}`,
+              color: showStars ? '#111' : '#444',
+              fontWeight: showStars ? 'bold' : 'normal',
+            }}
+          >{showStars ? 'ON' : 'OFF'}</button>
+        </div>
+
+        <Divider />
+
         {/* KEYBINDINGS */}
         <SectionLabel>KEYBINDINGS</SectionLabel>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -239,19 +297,213 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, onC
 }
 
 // ─── Leaderboard Modal ────────────────────────────────────────────────────────
+// ─── History Modal ────────────────────────────────────────────────────────────
+function HistoryModal({ onClose }) {
+  const [history] = useState(loadHistory)
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#0f0f0f', border: '1px solid #222', borderRadius: 12, width: 560, maxHeight: '80vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+        <div style={{ padding: '22px 26px 16px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+          <div>
+            <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 4, marginBottom: 5 }}>LAST 20 RUNS</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 18, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>RECENT HISTORY</div>
+          </div>
+          <button onClick={onClose} style={{ fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1, padding: '10px 14px' }}>
+          {history.length === 0 ? (
+            <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#2a2a2a', textAlign: 'center', padding: '48px 0' }}>No runs yet.</div>
+          ) : history.map((h, i) => (
+            <div key={i} style={{ display: 'grid', gridTemplateColumns: '28px 1fr 48px 72px 110px', alignItems: 'center', gap: 10, padding: '11px 10px', borderRadius: 7, marginBottom: 4, background: '#111', border: '1px solid #191919' }}>
+              <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#2a2a2a', letterSpacing: 1 }}>#{i + 1}</span>
+              <div>
+                <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#ccc', fontWeight: 'bold' }}>{h.songTitle}</div>
+                <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#2d2d2d', marginTop: 2 }}>{h.date}</div>
+              </div>
+              <span style={{ fontFamily: 'Arial', fontSize: 16, fontWeight: 'bold', color: GRADE_COLORS[h.grade] || '#888' }}>{h.grade}</span>
+              <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#444', textAlign: 'right' }}>{h.accuracy}%</span>
+              <span style={{ fontFamily: 'Arial', fontSize: 13, fontWeight: 'bold', color: '#fff', textAlign: 'right' }}>{(h.score || 0).toLocaleString()}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Calibration Modal ────────────────────────────────────────────────────────
+function CalibrationModal({ onClose }) {
+  const BPM         = 80
+  const BEAT_MS     = 60000 / BPM
+  const [phase,     setPhase]     = useState('intro')   // intro | tapping | result
+  const [taps,      setTaps]      = useState([])
+  const [suggested, setSuggested] = useState(null)
+  const ctxRef      = useRef(null)
+  const startRef    = useRef(null)
+  const nextBeatRef = useRef(0)
+  const timerRef    = useRef(null)
+
+  // Generate metronome click via Web Audio
+  const playClick = useCallback((ctx, when, accent = false) => {
+    const osc  = ctx.createOscillator()
+    const gain = ctx.createGain()
+    osc.connect(gain); gain.connect(ctx.destination)
+    osc.frequency.value = accent ? 1200 : 800
+    gain.gain.setValueAtTime(0.5, when)
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.06)
+    osc.start(when); osc.stop(when + 0.07)
+  }, [])
+
+  const startTapping = useCallback(() => {
+    const ctx = new AudioContext()
+    ctxRef.current  = ctx
+    startRef.current = ctx.currentTime
+    setPhase('tapping'); setTaps([])
+    let beat = 0
+    const schedule = () => {
+      const when = startRef.current + beat * (BEAT_MS / 1000)
+      playClick(ctx, when, beat % 4 === 0)
+      nextBeatRef.current = when
+      beat++
+      timerRef.current = setTimeout(schedule, BEAT_MS - 30)
+    }
+    schedule()
+  }, [playClick, BEAT_MS])
+
+  const stopTapping = useCallback(() => {
+    clearTimeout(timerRef.current)
+    ctxRef.current?.close()
+  }, [])
+
+  useEffect(() => () => stopTapping(), [stopTapping])
+
+  const handleTap = useCallback(() => {
+    if (phase !== 'tapping' || !ctxRef.current) return
+    const ctx      = ctxRef.current
+    const tapMs    = (ctx.currentTime - startRef.current) * 1000
+    const beatN    = Math.round(tapMs / BEAT_MS)
+    const idealMs  = beatN * BEAT_MS
+    const offsetMs = tapMs - idealMs
+    setTaps(prev => {
+      const next = [...prev, { tapMs, offsetMs }]
+      if (next.length >= 8) {
+        stopTapping()
+        const avg = Math.round(next.slice(-6).reduce((s, t) => s + t.offsetMs, 0) / 6)
+        setSuggested(avg)
+        setPhase('result')
+        const saved = JSON.parse(localStorage.getItem('kronox-settings') || '{}')
+        localStorage.setItem('kronox-settings', JSON.stringify({ ...saved, audioOffset: avg }))
+      }
+      return next
+    })
+  }, [phase, BEAT_MS, stopTapping])
+
+  useEffect(() => {
+    if (phase !== 'tapping') return
+    const handler = e => { if (e.code === 'Space') { e.preventDefault(); handleTap() } }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [phase, handleTap])
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#0f0f0f', border: '1px solid #222', borderRadius: 12, width: 480, padding: '32px', display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+        <div>
+          <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 4, marginBottom: 6 }}>HIT TIMING TOOL</div>
+          <div style={{ fontFamily: 'Arial', fontSize: 18, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>CALIBRATE</div>
+        </div>
+
+        {phase === 'intro' && (
+          <>
+            <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#444', lineHeight: 1.8 }}>
+              A metronome will play at 80 BPM. Press <strong style={{ color: '#888' }}>SPACE</strong> on every beat (8 times). KRONOX will measure your natural offset and apply it automatically.
+            </div>
+            <button onClick={startTapping}
+              style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', cursor: 'pointer' }}>
+              START METRONOME
+            </button>
+          </>
+        )}
+
+        {phase === 'tapping' && (
+          <>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontFamily: 'Arial', fontSize: 48, fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>{taps.length}</div>
+              <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#333', letterSpacing: 3, marginTop: 6 }}>TAPS OF 8</div>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+              {Array.from({ length: 8 }, (_, i) => (
+                <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: i < taps.length ? '#fff' : '#1e1e1e', transition: 'background 0.1s' }} />
+              ))}
+            </div>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#444', textAlign: 'center' }}>Tap SPACE on every beat...</div>
+            <button onClick={() => { stopTapping(); setPhase('intro'); setTaps([]) }}
+              style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '10px 0', borderRadius: 6, background: 'transparent', color: '#444', border: '1px solid #222', cursor: 'pointer' }}>
+              CANCEL
+            </button>
+          </>
+        )}
+
+        {phase === 'result' && (
+          <>
+            <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', letterSpacing: 3 }}>SUGGESTED OFFSET</div>
+              <div style={{ fontFamily: 'Arial', fontSize: 52, fontWeight: 'bold', color: suggested === 0 ? '#66ff99' : '#fff', lineHeight: 1 }}>{suggested > 0 ? '+' : ''}{suggested}<span style={{ fontSize: 14, color: '#555 ', marginLeft: 4 }}>ms</span></div>
+              <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#333' }}>
+                {Math.abs(suggested) < 10 ? 'Perfect — no adjustment needed!' : suggested > 0 ? 'You tap early. Offset applied.' : 'You tap late. Offset applied.'}
+              </div>
+            </div>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#333', textAlign: 'center' }}>Offset saved to settings automatically.</div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => { setPhase('intro'); setTaps([]) }}
+                style={{ flex: 1, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: 'transparent', color: '#666', border: '1px solid #222', cursor: 'pointer' }}>
+                REDO
+              </button>
+              <button onClick={onClose}
+                style={{ flex: 2, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+                DONE
+              </button>
+            </div>
+          </>
+        )}
+
+        <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 10, color: '#333', background: 'none', border: 'none', cursor: 'pointer', alignSelf: 'flex-end', marginTop: -8 }}>✕ CLOSE</button>
+      </div>
+    </div>
+  )
+}
+
+// ─── Leaderboard Modal ────────────────────────────────────────────────────────
 const LB_RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32']
 const LB_MEDALS      = ['🥇', '🥈', '🥉']
 
 function LeaderboardModal({ onClose }) {
-  const [players, setPlayers] = useState(() =>
-    Object.entries(loadPlayerStats())
-      .map(([id, d]) => ({ id, ...d }))
-      .sort((a, b) => b.totalScore - a.totalScore)
-  )
+  const [players, setPlayers] = useState([])
+  const [source,  setSource]  = useState('loading') // 'loading' | 'global' | 'local' | 'error'
+
+  useEffect(() => {
+    // Try global leaderboard first
+    import('./supabase.js').then(({ fetchGlobalLeaderboard }) => fetchGlobalLeaderboard())
+      .then(data => {
+        setPlayers(data)
+        setSource('global')
+      })
+      .catch(() => {
+        // Fall back to localStorage
+        const local = Object.entries(loadPlayerStats())
+          .map(([id, d]) => ({ id, ...d }))
+          .sort((a, b) => b.totalScore - a.totalScore)
+        setPlayers(local)
+        setSource('local')
+      })
+  }, [])
 
   const clearAll = () => {
     localStorage.removeItem('kronox-player-stats')
-    setPlayers([])
+    setPlayers(p => p.filter(x => x.id !== GUEST_ID))
   }
 
   return (
@@ -273,7 +525,9 @@ function LeaderboardModal({ onClose }) {
         {/* Header */}
         <div style={{ padding: '26px 30px 18px', borderBottom: '1px solid #1a1a1a', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
           <div>
-            <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 4, marginBottom: 6 }}>DEDCIATED PLAYERS · ALL TIME</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 4, marginBottom: 6 }}>
+              {source === 'global' ? 'GLOBAL · ALL TIME' : source === 'local' ? 'LOCAL · GLOBAL OFFLINE' : 'LOADING...'}
+            </div>
             <div style={{ fontFamily: 'Arial', fontSize: 20, color: '#fff', fontWeight: 'bold', letterSpacing: 4 }}>LEADERBOARD</div>
           </div>
           <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 18, color: '#333', background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1, paddingBottom: 2 }}>✕</button>
@@ -290,7 +544,9 @@ function LeaderboardModal({ onClose }) {
 
         {/* Rows */}
         <div style={{ overflowY: 'auto', flex: 1, padding: players.length === 0 ? 0 : '10px 18px 10px' }}>
-          {players.length === 0 ? (
+          {source === 'loading' ? (
+            <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#2a2a2a', textAlign: 'center', padding: '60px 0' }}>Loading...</div>
+          ) : players.length === 0 ? (
             <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#2a2a2a', textAlign: 'center', padding: '60px 0' }}>
               No scores yet — complete a song to appear here!
             </div>
@@ -298,8 +554,8 @@ function LeaderboardModal({ onClose }) {
             const isYou     = p.id === GUEST_ID
             const isTop3    = i < 3
             const rc        = LB_RANK_COLORS[i]
-            const rowBg     = isYou ? 'rgba(77,150,255,0.07)' : isTop3 ? `${rc}08` : 'transparent'
-            const rowBorder = isYou ? 'rgba(77,150,255,0.22)' : isTop3 ? `${rc}22` : '#191919'
+            const rowBg     = isYou ? 'rgba(255,255,255,0.04)' : isTop3 ? `${rc}08` : 'transparent'
+            const rowBorder = isYou ? 'rgba(255,255,255,0.12)' : isTop3 ? `${rc}22` : '#191919'
             return (
               <div key={p.id} style={{
                 display: 'grid', gridTemplateColumns: '52px 1fr 72px 60px 130px',
@@ -318,11 +574,11 @@ function LeaderboardModal({ onClose }) {
                 {/* Player */}
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontFamily: 'Arial', fontSize: 12, color: isYou ? '#4d96ff' : isTop3 ? rc : '#bbb', fontWeight: isYou || isTop3 ? 'bold' : 'normal' }}>
+                    <span style={{ fontFamily: 'Arial', fontSize: 12, color: isYou ? '#fff' : isTop3 ? rc : '#bbb', fontWeight: isYou || isTop3 ? 'bold' : 'normal' }}>
                       {p.id}
                     </span>
                     {isYou && (
-                      <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, color: '#4d96ff', background: 'rgba(77,150,255,0.12)', padding: '2px 6px', borderRadius: 3 }}>YOU</span>
+                      <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, color: '#666', background: 'rgba(255,255,255,0.07)', padding: '2px 6px', borderRadius: 3 }}>YOU</span>
                     )}
                   </div>
                   <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#2d2d2d', marginTop: 3, letterSpacing: 1 }}>
@@ -334,7 +590,7 @@ function LeaderboardModal({ onClose }) {
                 {/* Best grade */}
                 <div style={{ fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', color: GRADE_COLORS[p.bestGrade] || '#888' }}>{p.bestGrade}</div>
                 {/* Total score */}
-                <div style={{ fontFamily: 'Arial', fontSize: 17, fontWeight: 'bold', color: isTop3 ? rc : isYou ? '#4d96ff' : '#fff', textAlign: 'right', letterSpacing: 1 }}>
+                <div style={{ fontFamily: 'Arial', fontSize: 17, fontWeight: 'bold', color: isTop3 ? rc : isYou ? '#ccc' : '#fff', textAlign: 'right', letterSpacing: 1 }}>
                   {(p.totalScore || 0).toLocaleString()}
                 </div>
               </div>
@@ -485,16 +741,33 @@ function CatalogPanel({ onBack, onPlay }) {
   const [error,   setError]   = useState('')
   const [search,  setSearch]  = useState('')
   const [sortBy,  setSortBy]  = useState('newest')
+  const [myLikes, setMyLikes] = useState(new Set())
+  const [likingId, setLikingId] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     setLoading(true); setError('')
-    import('./supabase.js')
-      .then(({ fetchCatalog }) => fetchCatalog({ sortBy }))
-      .then(data  => { if (!cancelled) { setSongs(data);  setLoading(false) } })
+    Promise.all([
+      import('./supabase.js').then(({ fetchCatalog }) => fetchCatalog({ sortBy })),
+      import('./supabase.js').then(({ fetchMyLikes }) => fetchMyLikes(GUEST_ID)),
+    ])
+      .then(([data, liked]) => { if (!cancelled) { setSongs(data); setMyLikes(liked); setLoading(false) } })
       .catch(err  => { if (!cancelled) { setError(err.message || 'Could not load catalog.'); setLoading(false) } })
     return () => { cancelled = true }
   }, [sortBy])
+
+  const handleLike = async (e, song) => {
+    e.stopPropagation()
+    if (likingId) return
+    setLikingId(song.id)
+    try {
+      const { toggleLike } = await import('./supabase.js')
+      const nowLiked = await toggleLike(song.id, GUEST_ID)
+      setMyLikes(prev => { const s = new Set(prev); nowLiked ? s.add(song.id) : s.delete(song.id); return s })
+      setSongs(prev => prev.map(s => s.id === song.id ? { ...s, likes: Math.max(0, (s.likes || 0) + (nowLiked ? 1 : -1)) } : s))
+    } catch { /* best-effort */ }
+    setLikingId(null)
+  }
 
   const filtered = songs.filter(s =>
     !search ||
@@ -524,7 +797,7 @@ function CatalogPanel({ onBack, onPlay }) {
           style={{ flex: 1, fontFamily: 'Arial', fontSize: 12, color: '#fff', padding: '9px 12px', borderRadius: 5, background: '#111', border: '1px solid #2a2a2a', outline: 'none' }}
           onFocus={e => e.target.style.borderColor = '#444'}
           onBlur={e => e.target.style.borderColor = '#2a2a2a'} />
-        {[['newest', 'NEWEST'], ['plays', 'POPULAR']].map(([val, lbl]) => (
+        {[['newest', 'NEWEST'], ['plays', 'POPULAR'], ['likes', 'FEATURED']].map(([val, lbl]) => (
           <button key={val} onClick={() => setSortBy(val)}
             style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${sortBy === val ? '#444' : '#222'}`, background: sortBy === val ? '#222' : 'transparent', color: sortBy === val ? '#fff' : '#444', cursor: 'pointer', transition: 'all 0.12s' }}>
             {lbl}
@@ -550,13 +823,23 @@ function CatalogPanel({ onBack, onPlay }) {
           </div>
         )}
 
-        {filtered.map(song => (
+        {filtered.map(song => {
+          const diff    = song.chart ? calcDifficulty(song.chart, song.bpm, song.speed, song.subdivision) : null
+          const liked   = myLikes.has(song.id)
+          return (
           <div key={song.id}
             style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#111', borderRadius: 6, border: '1px solid #1a1a1a', transition: 'border-color 0.12s' }}
             onMouseEnter={e => e.currentTarget.style.borderColor = '#2a2a2a'}
             onMouseLeave={e => e.currentTarget.style.borderColor = '#1a1a1a'}>
             <div>
-              <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>{song.title}</div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 5 }}>
+                <span style={{ fontFamily: 'Arial', fontSize: 13, color: '#fff', fontWeight: 'bold' }}>{song.title}</span>
+                {diff !== null && (
+                  <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 1, color: diffColor(diff), background: diffColor(diff) + '18', padding: '2px 7px', borderRadius: 3, flexShrink: 0 }}>
+                    ★ {diff}
+                  </span>
+                )}
+              </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
                 <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#555' }}>{song.creator}</span>
                 <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
@@ -567,12 +850,19 @@ function CatalogPanel({ onBack, onPlay }) {
                 <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{(song.plays || 0).toLocaleString()} plays</span>
               </div>
             </div>
-            <button onClick={() => onPlay(song)}
-              style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}>
-              PLAY
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+              <button onClick={e => handleLike(e, song)} disabled={!!likingId}
+                style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: liked ? '#2a1a1a' : 'transparent', color: liked ? '#ff4466' : '#333', border: `1px solid ${liked ? '#ff446633' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s', display: 'flex', alignItems: 'center', gap: 5 }}>
+                ♥ {(song.likes || 0).toLocaleString()}
+              </button>
+              <button onClick={() => onPlay(song)}
+                style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+                PLAY
+              </button>
+            </div>
           </div>
-        ))}
+          )
+        })}
       </div>
     </div>
   )
@@ -600,6 +890,13 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const [activeTab, setActiveTab] = useState('chart')
   const [holdMode,  setHoldMode]  = useState(false)
   const [holdStart, setHoldStart] = useState(null)
+  const [autoplay,  setAutoplay]  = useState(false)
+
+  // Slow mode
+  const [slowModeKey,      setSlowModeKey]      = useState(saved.slowModeKey   || 'q')
+  const [slowModeSpeed,    setSlowModeSpeed]    = useState(saved.slowModeSpeed || 0.5)
+  const [isSlowMode,       setIsSlowMode]       = useState(false)
+  const [capturingSlowKey, setCapturingSlowKey] = useState(false)
 
   const saveSettings = useCallback((overrides = {}) => {
     localStorage.setItem('kronox-settings', JSON.stringify({
@@ -621,7 +918,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   }, []) // eslint-disable-line
 
   const setupAudio = file => {
-    if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
+    if (audioRef.current) { audioRef.current.pause() }
     const url = URL.createObjectURL(file)
     const audio = new Audio(url)
     audio.addEventListener('timeupdate', () => setPreviewPos(audio.currentTime))
@@ -669,8 +966,10 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     const req = indexedDB.open('kronox', 1)
     req.onupgradeneeded = ev => { const db = ev.target.result; if (!db.objectStoreNames.contains('audio')) db.createObjectStore('audio') }
     req.onsuccess = ev => { ev.target.result.transaction('audio', 'readwrite').objectStore('audio').put(f, 'song') }
-    const tmp = new Audio(URL.createObjectURL(f))
+    const tmpUrl = URL.createObjectURL(f)
+    const tmp = new Audio(tmpUrl)
     tmp.addEventListener('loadedmetadata', () => {
+      URL.revokeObjectURL(tmpUrl)
       if (tmp.duration && isFinite(tmp.duration)) {
         const nb = Math.max(8, Math.ceil((tmp.duration * (bpm / 60)) / 8) * 8); setBeats(nb)
         const ns = nb * subdivision
@@ -710,14 +1009,29 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
         if (data.bpm)         setBpm(Number(data.bpm))
         if (data.speed)       setSpeed(Number(data.speed))
         if (data.subdivision) setSubdivision(Number(data.subdivision))
-        if (data.beats)       setBeats(Number(data.beats))
+        if (data.beats && isFinite(Number(data.beats))) setBeats(Number(data.beats))
         setChart(data.chart)
-        saveSettings({ chart: data.chart, songTitle: data.title, bpm: Number(data.bpm), speed: Number(data.speed), subdivision: Number(data.subdivision), beats: Number(data.beats) })
+        saveSettings({ chart: data.chart, songTitle: data.title, bpm: Number(data.bpm) || 120, speed: Number(data.speed) || 2.0, subdivision: Number(data.subdivision) || 1, beats: Number(data.beats) || DEFAULT_BEATS })
       } catch { alert('Invalid .kronox.json file') }
     }
     reader.readAsText(f)
     e.target.value = ''
   }
+
+  // Slow mode key capture
+  useEffect(() => {
+    if (!capturingSlowKey) return
+    const handler = e => {
+      e.preventDefault()
+      if (e.key === 'Escape') { setCapturingSlowKey(false); return }
+      if (keybinds.includes(e.key)) { setCapturingSlowKey(false); return } // can't overlap lane keys
+      setSlowModeKey(e.key)
+      saveSettings({ slowModeKey: e.key })
+      setCapturingSlowKey(false)
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [capturingSlowKey, keybinds, saveSettings])
 
   // ── Record mode ───────────────────────────────────────────────────────────
   const HOLD_THRESHOLD_MS = 200
@@ -730,6 +1044,8 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const startRecording = () => {
     if (!songFile || !audioRef.current) return
     audioRef.current.currentTime = 0
+    audioRef.current.playbackRate = 1.0
+    setIsSlowMode(false)
     recordChartRef.current = buildChart(beats * subdivision)
     recordKeyDownRef.current = {}
     setRecordChart(null)
@@ -751,7 +1067,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     return () => clearTimeout(t)
   }, [recordCountdown])
   const stopRecording = useCallback(() => {
-    setIsRecording(false); audioRef.current?.pause()
+    setIsRecording(false)
+    setIsSlowMode(false)
+    if (audioRef.current) { audioRef.current.playbackRate = 1.0; audioRef.current.pause() }
     if (recordChartRef.current) setRecordChart(recordChartRef.current)
     recordKeyDownRef.current = {}
   }, [])
@@ -781,13 +1099,24 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       } else { newChart[info.subdivIdx][lane] = 1 }
       recordChartRef.current = newChart
     }
+    const handleSlowKey = e => {
+      if (e.key !== slowModeKey) return
+      e.preventDefault()
+      setIsSlowMode(prev => {
+        const next = !prev
+        if (audioRef.current) audioRef.current.playbackRate = next ? slowModeSpeed : 1.0
+        return next
+      })
+    }
     window.addEventListener('keydown', handleDown); window.addEventListener('keyup', handleUp)
+    window.addEventListener('keydown', handleSlowKey)
     const audio = audioRef.current; audio?.addEventListener('ended', stopRecording)
     return () => {
       window.removeEventListener('keydown', handleDown); window.removeEventListener('keyup', handleUp)
+      window.removeEventListener('keydown', handleSlowKey)
       audio?.removeEventListener('ended', stopRecording)
     }
-  }, [isRecording, bpm, subdivision, keybinds, stopRecording])
+  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed])
 
   const applyRecordedChart   = () => { if (!recordChart) return; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
   const discardRecordedChart = () => setRecordChart(null)
@@ -867,7 +1196,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       {activeTab === 'chart' && (
         <>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#66ff99', fontWeight: 'bold' }}>{beats} beats · {beats * subdivision} steps</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#66ff99', fontWeight: 'bold' }}>{isFinite(beats) ? beats : DEFAULT_BEATS} beats · {(isFinite(beats) ? beats : DEFAULT_BEATS) * subdivision} steps</div>
             <div style={{ display: 'flex', gap: 8 }}>
               <SmallBtn onClick={() => setHoldMode(!holdMode)} color={holdMode ? '#ffd93d' : '#666'}>{holdMode ? 'HOLD MODE ●' : 'HOLD MODE'}</SmallBtn>
               <SmallBtn onClick={randomizeChart} color="#ff4d8f">RANDOM</SmallBtn>
@@ -935,10 +1264,48 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
             </div>
           </div>
           {!isRecording && !recordChart && recordCountdown === null && (
-            <button onClick={startRecording} disabled={!songFile}
-              style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: songFile ? '#ff4d8f' : '#1a1a1a', color: songFile ? '#fff' : '#333', border: 'none', transition: 'all 0.2s' }}>
-              {songFile ? '● START RECORDING' : '⚠ UPLOAD A SONG FIRST'}
-            </button>
+            <>
+              {/* Slow mode settings */}
+              <div style={{ background: '#1a1a1a', border: '1px solid #222', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#555' }} />
+                  <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#555', letterSpacing: 3, fontWeight: 'bold' }}>SLOW MODE</span>
+                </div>
+                <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#333', lineHeight: 1.55 }}>
+                  Toggle during recording to slow audio + notes together — timing stays accurate.
+                </div>
+                <div style={{ display: 'flex', gap: 14, alignItems: 'flex-end' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <FieldLabel>TOGGLE KEY</FieldLabel>
+                    <button
+                      onClick={() => setCapturingSlowKey(true)}
+                      style={{ width: 52, height: 36, borderRadius: 5, background: capturingSlowKey ? '#222' : '#111', border: `1px solid ${capturingSlowKey ? '#ff4d8f' : '#2a2a2a'}`, color: capturingSlowKey ? '#ff4d8f' : '#888', fontFamily: 'Arial', fontSize: 13, fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.15s' }}>
+                      {capturingSlowKey ? '·' : keyLabel(slowModeKey)}
+                    </button>
+                  </div>
+                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+                      <FieldLabel>SLOW SPEED</FieldLabel>
+                      <span style={{ fontFamily: 'Arial', fontSize: 19, color: '#888', fontWeight: 'bold' }}>{slowModeSpeed.toFixed(1)}×</span>
+                    </div>
+                    <style>{`
+                      .slow-slider { -webkit-appearance: none; appearance: none; height: 3px; border-radius: 2px; outline: none; cursor: pointer; background: linear-gradient(to right, #444 0%, #444 ${((slowModeSpeed - 0.1) / 1.9) * 100}%, #222 ${((slowModeSpeed - 0.1) / 1.9) * 100}%, #222 100%); }
+                      .slow-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 13px; height: 13px; border-radius: 50%; background: #888; border: none; cursor: pointer; transition: background 0.12s; }
+                      .slow-slider::-webkit-slider-thumb:hover { background: #fff; }
+                      .slow-slider::-moz-range-thumb { width: 13px; height: 13px; border-radius: 50%; background: #888; border: none; cursor: pointer; }
+                    `}</style>
+                    <input type="range" min={0.1} max={2.0} step={0.1} value={slowModeSpeed}
+                      className="slow-slider"
+                      onChange={e => { const v = parseFloat(e.target.value); setSlowModeSpeed(v); saveSettings({ slowModeSpeed: v }) }}
+                      style={{ width: '100%', background: `linear-gradient(to right, #444 0%, #444 ${((slowModeSpeed - 0.1) / 1.9) * 100}%, #222 ${((slowModeSpeed - 0.1) / 1.9) * 100}%, #222 100%)` }} />
+                  </div>
+                </div>
+              </div>
+              <button onClick={startRecording} disabled={!songFile}
+                style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: songFile ? '#ff4d8f' : '#1a1a1a', color: songFile ? '#fff' : '#333', border: 'none', transition: 'all 0.2s' }}>
+                {songFile ? '● START RECORDING' : '⚠ UPLOAD A SONG FIRST'}
+              </button>
+            </>
           )}
           {recordCountdown !== null && (
             <div style={{ position: 'relative', border: '1px solid #ff4d8f33', borderRadius: 6, overflow: 'hidden', height: 120, background: '#1a0a10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -957,6 +1324,16 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
                 </div>
               </div>
               <LiveKeyDisplay keys={keybinds} keyLabels={keybinds.map(k => keyLabel(k))} names={LANE_NAMES} colors={activeLaneColors} />
+              {/* Slow mode toggle indicator */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ padding: '7px 18px', borderRadius: 20, background: isSlowMode ? '#1f1f1f' : '#111', border: `1px solid ${isSlowMode ? '#ff4d8f44' : '#1a1a1a'}`, display: 'flex', alignItems: 'center', gap: 10, transition: 'all 0.15s' }}>
+                  <div style={{ width: 7, height: 7, borderRadius: '50%', background: isSlowMode ? '#ff4d8f' : '#2a2a2a', transition: 'background 0.15s', flexShrink: 0 }} />
+                  <span style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, color: isSlowMode ? '#ff4d8f' : '#333', fontWeight: 'bold' }}>
+                    {isSlowMode ? `SLOW ${slowModeSpeed.toFixed(1)}×` : 'NORMAL SPEED'}
+                  </span>
+                  <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#252525', letterSpacing: 1 }}>[{keyLabel(slowModeKey)}] TO TOGGLE</span>
+                </div>
+              </div>
               <button onClick={stopRecording} style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '12px 0', borderRadius: 6, background: '#2a2a2a', color: '#fff', border: '1px solid #3a3a3a', cursor: 'pointer' }}>■ STOP RECORDING</button>
             </div>
           )}
@@ -990,13 +1367,21 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
             ↑ PUBLISH
           </SmallBtn>
         )}
+        {songFile && (() => {
+          const d = calcDifficulty(chart, bpm, speed, subdivision)
+          return <span style={{ fontFamily: 'Arial', fontSize: 9, color: diffColor(d), background: diffColor(d) + '18', padding: '6px 12px', borderRadius: 5, letterSpacing: 1 }}>★ {d}</span>
+        })()}
+        <button onClick={() => setAutoplay(a => !a)}
+          style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${autoplay ? '#ffd93d55' : '#222'}`, background: autoplay ? '#ffd93d11' : 'transparent', color: autoplay ? '#ffd93d' : '#555', cursor: 'pointer', transition: 'all 0.15s' }}>
+          {autoplay ? '▶▶ AUTOPLAY ON' : 'AUTOPLAY'}
+        </button>
         <button
-          onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds })}
+          onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds, autoplay })}
           disabled={!songFile}
-          style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 13, letterSpacing: 1, fontWeight: 'bold', padding: '12px 28px', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: songFile ? '#66ff99' : '#1a1a1a', color: songFile ? '#111' : '#333', border: songFile ? 'none' : '1px solid #2a2a2a', transition: 'all 0.2s' }}
-          onMouseEnter={e => { if (songFile) { e.currentTarget.style.background = '#99ffbb'; e.currentTarget.style.transform = 'scale(1.02)' } }}
-          onMouseLeave={e => { if (songFile) { e.currentTarget.style.background = '#66ff99'; e.currentTarget.style.transform = 'scale(1)' } }}>
-          {songFile ? '▶ PLAY' : '⚠ UPLOAD A SONG FIRST'}
+          style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 13, letterSpacing: 1, fontWeight: 'bold', padding: '12px 28px', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: autoplay ? '#ffd93d' : songFile ? '#66ff99' : '#1a1a1a', color: songFile ? '#111' : '#333', border: songFile ? 'none' : '1px solid #2a2a2a', transition: 'all 0.2s' }}
+          onMouseEnter={e => { if (songFile) { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'scale(1.02)' } }}
+          onMouseLeave={e => { if (songFile) { e.currentTarget.style.opacity = '1'; e.currentTarget.style.transform = 'scale(1)' } }}>
+          {songFile ? (autoplay ? '▶▶ AUTOPLAY' : '▶ PLAY') : '⚠ UPLOAD A SONG FIRST'}
         </button>
       </div>
     </div>
@@ -1032,8 +1417,13 @@ function GameView({ config, onStop }) {
   const rafRef      = useRef(null)
   const sfxCtxRef   = useRef(null)
   const sfxBufRef   = useRef(null)
+  const analyserRef      = useRef(null)
+  const starCanvasRef    = useRef(null)
+  const starsRef         = useRef(null)
+  const beatIntensityRef = useRef(0)
+  const beatBaseRef      = useRef(0)  // long-term RMS average for onset detection
   const stateRef = useRef({
-    activeNotes: [], score: 0, combo: 0, health: 80,
+    activeNotes: [], score: 0, combo: 0, multiplier: 1, health: 80,
     paused: false, completedBeats: new Set(),
     perfect: 0, good: 0, bad: 0, miss: 0, totalHits: 0,
     heldNotes: {},
@@ -1052,7 +1442,7 @@ function GameView({ config, onStop }) {
   const TOTAL_W         = LANE_W * 4 + LANE_GAP * 3
   const RECEPTOR_BOTTOM = 70
 
-  const [hud,             setHud]             = useState({ score: 0, combo: 0, health: 80 })
+  const [hud,             setHud]             = useState({ score: 0, combo: 0, multiplier: 1, health: 80 })
   const [judgment,        setJudgment]        = useState({ text: '', color: '#fff', visible: false, key: 0 })
   const [receptorPressed, setReceptorPressed] = useState([false, false, false, false])
   const [paused,          setPaused]          = useState(false)
@@ -1068,6 +1458,21 @@ function GameView({ config, onStop }) {
       .then(decoded => { sfxBufRef.current = decoded })
       .catch(() => {})
     return () => { ctx.close() }
+  }, [])
+
+  // ── Beat-reactive background via AnalyserNode ─────────────────────────────
+  // Connected once audio starts; sampled every rAF frame
+  const connectAnalyser = useCallback(audio => {
+    try {
+      const ctx      = new AudioContext()
+      ctx.resume()  // browsers start AudioContext suspended — force it active
+      const src      = ctx.createMediaElementSource(audio)
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 1024
+      src.connect(analyser)
+      analyser.connect(ctx.destination)
+      analyserRef.current = analyser
+    } catch { /* may fail if context limit hit */ }
   }, [])
 
   const playHitSfx = useCallback(() => {
@@ -1108,7 +1513,8 @@ function GameView({ config, onStop }) {
 
   const updateHud = useCallback(() => {
     const s = stateRef.current
-    setHud({ score: s.score, combo: s.combo, health: s.health })
+    s.multiplier = 1 + Math.floor(s.combo / 50)
+    setHud({ score: s.score, combo: s.combo, multiplier: s.multiplier, health: s.health })
     if (s.combo > 0) { setComboFlash(true); setTimeout(() => setComboFlash(false), 120) }
   }, [])
 
@@ -1149,7 +1555,7 @@ function GameView({ config, onStop }) {
     note.el = null; note.trailEl = null
     const s = stateRef.current
     s.completedBeats.add(`${note.beat}-${note.lane}`)
-    s.miss++; s.totalHits++; s.combo = 0
+    s.miss++; s.totalHits++; s.combo = 0; s.multiplier = 1
     s.health = Math.max(0, s.health - 10)
     updateHud(); showJudge('MISS', '#ff6666')
     if (s.health <= 0) dieGame()
@@ -1168,9 +1574,9 @@ function GameView({ config, onStop }) {
     s.activeNotes = s.activeNotes.filter(n => !n.hit)
     s.combo++; s.totalHits++
     const laneEl = getLaneEl(lane)
-    if (frac >= 0.99)     { s.score += 350 * 2 * Math.max(1, Math.floor(s.combo / 10)); s.perfect++; s.health = Math.min(100, s.health + 5); showJudge('PERFECT', '#ffffff'); flashLane(laneEl) }
-    else if (frac >= 0.5) { s.score += 200 * Math.max(1, Math.floor(s.combo / 10));     s.good++;    s.health = Math.min(100, s.health + 3); showJudge('GOOD', '#aaaaaa');    flashLane(laneEl) }
-    else                  { s.score += 100 * Math.max(1, Math.floor(s.combo / 10));     s.bad++;     s.health = Math.min(100, s.health + 1); showJudge('BAD', '#555555') }
+    if (frac >= 0.99)     { s.score += 350 * 2 * s.multiplier; s.perfect++; s.health = Math.min(100, s.health + 5); showJudge('PERFECT', '#ffffff'); flashLane(laneEl) }
+    else if (frac >= 0.5) { s.score += 200 * s.multiplier;     s.good++;    s.health = Math.min(100, s.health + 3); showJudge('GOOD', '#aaaaaa');    flashLane(laneEl) }
+    else                  { s.score += 100 * s.multiplier;     s.bad++;     s.health = Math.min(100, s.health + 1); showJudge('BAD', '#555555') }
     updateHud()
   }, [showJudge, updateHud, getLaneEl, flashLane])
 
@@ -1209,7 +1615,7 @@ function GameView({ config, onStop }) {
     else if (minDist < 100) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++ }
     else                    { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
 
-    s.score += pts * Math.max(1, Math.floor(s.combo / 10))
+    s.score += pts * s.multiplier
     s.health = Math.min(100, s.health + 3)
     updateHud(); showJudge(text, color)
   }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx])
@@ -1222,11 +1628,15 @@ function GameView({ config, onStop }) {
 
   useEffect(() => {
     // Set up audio — countdown effect will trigger play
+    // crossOrigin must be set before src for CORS audio (catalog songs from Supabase)
     const url   = config.audioUrl || URL.createObjectURL(config.songFile)
-    const audio = new Audio(url)
+    const audio = new Audio()
+    if (config.audioUrl) audio.crossOrigin = 'anonymous'
+    audio.src    = url
     audio.volume = config.musicVolume ?? 1.0
     audioRef.current = audio
     audio.onended = stopGame
+    connectAnalyser(audio)
 
     const subdivision = config.subdivision || 1
     const subdivMs    = (60000 / config.bpm) / subdivision
@@ -1243,6 +1653,104 @@ function GameView({ config, onStop }) {
         const nowMs     = nowSec * 1000
         const futureIdx = Math.floor((nowSec + LOOKAHEAD_MS / 1000) / subdivSec)
         const laneEls   = stageRef.current?.querySelectorAll('.fnf-lane')
+
+        // ── Star field + beat-reactive glow ───────────────────────────────
+        const canvas = starCanvasRef.current
+        const starsEnabled = loadSettings().showStars !== false
+        if (canvas && starsEnabled) {
+          const W = canvas.offsetWidth || canvas.width || 800
+          const H = canvas.offsetHeight || canvas.height || 600
+          // Reinit if size changed or not yet initialized
+          if (!starsRef.current || starsRef.current._w !== W) {
+            canvas.width  = W
+            canvas.height = H
+            const HIGHWAY_HALF = (90 * 4 + 8 * 3) / 2 + 90 // highway half + 90px margin
+            const cx           = W / 2
+            const leftEdge     = cx - HIGHWAY_HALF
+            const rightStart   = cx + HIGHWAY_HALF
+            const spawnStar = () => {
+              const side = Math.random() < 0.5 ? 'left' : 'right'
+              const x = side === 'left'
+                ? Math.random() * Math.max(1, leftEdge - 10)
+                : rightStart + 10 + Math.random() * Math.max(1, W - rightStart - 10)
+              return {
+                x, y: Math.random() * H,
+                r:     0.4 + Math.random() * 1.0,
+                dx:    (Math.random() - 0.5) * 0.12,
+                dy:    (Math.random() - 0.5) * 0.08,
+                base:  0.03 + Math.random() * 0.10,  // very dim at silence
+                speed: 0.4 + Math.random() * 0.9,
+                phase: Math.random() * Math.PI * 2,
+              }
+            }
+            const stars = Array.from({ length: 55 }, spawnStar)
+            stars._w          = W
+            stars._leftEdge   = leftEdge
+            stars._rightStart = rightStart
+            stars._spawnStar  = spawnStar
+            starsRef.current  = stars
+          }
+
+          const leftEdge   = starsRef.current._leftEdge
+          const rightStart = starsRef.current._rightStart
+          const spawn      = starsRef.current._spawnStar
+
+          // Sample audio for beat intensity (onset detection — relative to running average)
+          let beat = 0
+          if (analyserRef.current) {
+            const tData = new Uint8Array(analyserRef.current.fftSize)
+            analyserRef.current.getByteTimeDomainData(tData)
+            let sum = 0
+            for (let i = 0; i < tData.length; i++) { const v = (tData[i]-128)/128; sum += v*v }
+            const rms = Math.sqrt(sum / tData.length)
+            // Build a slow-moving baseline (adapts over ~3s at 60fps)
+            if (beatBaseRef.current === 0) beatBaseRef.current = Math.max(rms, 0.001)
+            beatBaseRef.current = beatBaseRef.current * 0.997 + rms * 0.003
+            const base = beatBaseRef.current
+            // Onset = how much rms exceeds the long-term average
+            // At constant volume: onset ≈ 0.33 (gentle glow)
+            // On a loud transient: onset spikes to 1.0
+            // In quiet sections: onset = 0 (stars go dark)
+            const onset  = Math.max(0, (rms - base * 0.5) / Math.max(base * 1.5, 0.001))
+            const target = Math.min(onset, 1)
+            beatIntensityRef.current = target > beatIntensityRef.current
+              ? beatIntensityRef.current * 0.4 + target * 0.6  // fast attack
+              : beatIntensityRef.current * 0.82 + target * 0.18 // moderate decay
+            beat = beatIntensityRef.current
+          }
+
+          const ctx2d = canvas.getContext('2d')
+          ctx2d.clearRect(0, 0, canvas.width, canvas.height)
+          const nowT = performance.now() / 1000
+
+          for (let i = 0; i < starsRef.current.length; i++) {
+            const st = starsRef.current[i]
+            st.x = (st.x + st.dx + canvas.width)  % canvas.width
+            st.y = (st.y + st.dy + canvas.height) % canvas.height
+            // Respawn any star that drifts into the highway zone
+            if (st.x > leftEdge && st.x < rightStart) {
+              starsRef.current[i] = spawn()
+              continue
+            }
+            const twinkle  = 0.5 + 0.5 * Math.sin(nowT * st.speed + st.phase)
+            const alpha    = Math.min(st.base * (0.5 + 0.5 * twinkle) + beat * 0.80, 0.95)
+            const glowBlur = beat * 20 * twinkle  // NO glow without music
+            const dotR     = st.r + beat * 2.5 * twinkle
+            ctx2d.save()
+            ctx2d.shadowColor = `rgba(255,255,255,${beat * 0.9})`
+            ctx2d.shadowBlur  = glowBlur
+            ctx2d.globalAlpha = alpha
+            ctx2d.fillStyle   = '#ffffff'
+            ctx2d.beginPath()
+            ctx2d.arc(st.x, st.y, dotR, 0, Math.PI * 2)
+            ctx2d.fill()
+            ctx2d.restore()
+          }
+        } else if (canvas && !starsEnabled) {
+          const ctx2d = canvas.getContext('2d')
+          ctx2d.clearRect(0, 0, canvas.width, canvas.height)
+          starsRef.current = null
+        }
 
         // Spawn upcoming notes
         for (let b = 0; b <= Math.min(futureIdx, config.chart.length - 1); b++) {
@@ -1319,7 +1827,10 @@ function GameView({ config, onStop }) {
               const h         = Math.max(NOTE_SIZE, remaining * config.speed * 0.35)
               note.trailEl.style.bottom = RECEPTOR_BOTTOM + 'px'
               note.trailEl.style.height = h + 'px'
-              if (remaining <= 0) releaseHold(note.lane)
+              if (remaining <= 0) {
+                releaseHold(note.lane)
+                if (config.autoplay) setReceptorPressed(p => { const n=[...p]; n[note.lane]=false; return n })
+              }
             } else {
               const trailH = Math.max(NOTE_SIZE, note.holdDurationMs * config.speed * 0.35)
               note.trailEl.style.bottom = yFromBottom + 'px'
@@ -1329,6 +1840,29 @@ function GameView({ config, onStop }) {
 
           // Miss if scrolls past
           if (!isBeingHeld && yFromBottom < -100 && !note.hit) doMiss(note)
+
+          // ── Autoplay: auto-hit at perfect timing ──────────────────────
+          if (config.autoplay && !note.hit && !isBeingHeld && Math.abs(note.hitTimeMs - nowMs) < 10) {
+            const hitLane = note.lane
+            flashLane(laneEls?.[hitLane])
+            playHitSfx()
+            if (note.holdDurationMs > 0) {
+              s.heldNotes[hitLane] = { note, startMs: nowMs, holdDurationMs: note.holdDurationMs }
+              if (note.el) { note.el.remove(); note.el = null }
+              setReceptorPressed(p => { const n=[...p]; n[hitLane]=true; return n })
+            } else {
+              if (note.el) { note.el.remove(); note.el = null }
+              note.hit = true
+              s.completedBeats.add(`${note.beat}-${note.lane}`)
+              s.activeNotes = s.activeNotes.filter(n => !n.hit)
+              s.combo++; s.totalHits++; s.perfect++
+              s.score += 350 * s.multiplier
+              s.health = Math.min(100, s.health + 2)
+              updateHud(); showJudge('PERFECT', '#ffffff')
+              setReceptorPressed(p => { const n=[...p]; n[hitLane]=true; return n })
+              setTimeout(() => setReceptorPressed(p => { const n=[...p]; n[hitLane]=false; return n }), 120)
+            }
+          }
         }
 
         s.activeNotes = s.activeNotes.filter(n => !n.hit)
@@ -1338,6 +1872,7 @@ function GameView({ config, onStop }) {
     rafRef.current = requestAnimationFrame(loop)
 
     const onKey = e => {
+      if (config.autoplay) return
       const lane = keybinds.indexOf(e.key); if (lane === -1) return
       e.preventDefault()
       if (e.type === 'keydown' && !e.repeat) {
@@ -1387,6 +1922,12 @@ function GameView({ config, onStop }) {
       {/* Stage */}
       <div ref={stageRef} style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#080808' }}>
 
+        {/* Star field background */}
+        <canvas ref={starCanvasRef} style={{
+          position: 'absolute', inset: 0, width: '100%', height: '100%',
+          pointerEvents: 'none', zIndex: 0, opacity: 1,
+        }} />
+
         {/* Highway */}
         <div style={{
           position: 'absolute', top: 0, bottom: 0,
@@ -1415,11 +1956,34 @@ function GameView({ config, onStop }) {
 
         {/* HUD */}
         <div style={{ position: 'absolute', top: 12, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', padding: '0 20px', pointerEvents: 'none', zIndex: 10 }}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-            <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#3a3a3a', letterSpacing: 2 }}>COMBO</span>
-            <span style={{ fontFamily: 'Arial', fontSize: 16, color: '#fff', fontWeight: 'bold', animation: comboFlash ? 'comboPop 0.12s ease-out' : 'none' }}>{hud.combo}×</span>
+          {/* Combo + multiplier ring */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>
+            {(() => {
+              const ringSize  = 54
+              const r         = 22
+              const circ      = 2 * Math.PI * r
+              const ringPct   = (hud.combo % 50) / 50
+              const offset    = circ * (1 - ringPct)
+              const mult      = hud.multiplier
+              const ringColor = mult >= 5 ? '#cc44ff' : mult >= 4 ? '#ff4466' : mult >= 3 ? '#ff9933' : mult >= 2 ? '#ffd93d' : '#ffffff'
+              return (
+                <div style={{ position: 'relative', width: ringSize, height: ringSize, animation: comboFlash ? 'comboPop 0.12s ease-out' : 'none' }}>
+                  <svg width={ringSize} height={ringSize} style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+                    <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke="#1a1a1a" strokeWidth="3" />
+                    <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke={ringColor}
+                      strokeWidth="3" strokeLinecap="round"
+                      strokeDasharray={circ} strokeDashoffset={offset}
+                      style={{ transition: 'stroke-dashoffset 0.08s linear, stroke 0.3s' }} />
+                  </svg>
+                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
+                    <span style={{ fontFamily: 'Arial', fontSize: 11, color: ringColor, fontWeight: 'bold', lineHeight: 1 }}>{hud.combo}</span>
+                    <span style={{ fontFamily: 'Arial', fontSize: 6, color: ringColor + 'aa', letterSpacing: 1, lineHeight: 1 }}>{mult > 1 ? `${mult}×` : 'CMB'}</span>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
-          <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#222', letterSpacing: 2, alignSelf: 'center' }}>{config.songTitle.toUpperCase()}</div>
+          <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#222', letterSpacing: 2, alignSelf: 'center' }}>{config.autoplay ? 'AUTOPLAY' : config.songTitle.toUpperCase()}</div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: 'Arial', fontSize: 6, color: '#3a3a3a', letterSpacing: 2, marginBottom: 2 }}>SCORE</div>
             <div style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', fontWeight: 'bold' }}>{hud.score.toLocaleString()}</div>
@@ -1453,6 +2017,11 @@ function GameView({ config, onStop }) {
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.62)', zIndex: 40 }}>
             <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', letterSpacing: 6, fontWeight: 'bold' }}>PAUSED</div>
           </div>
+        )}
+
+        {/* Autoplay badge */}
+        {config.autoplay && !paused && (
+          <div style={{ position: 'absolute', top: 70, left: '50%', transform: 'translateX(-50%)', fontFamily: 'Arial', fontSize: 7, color: '#ffffff22', letterSpacing: 4, pointerEvents: 'none', zIndex: 10 }}>AUTOPLAY · NO SCORE</div>
         )}
       </div>
 
@@ -1627,12 +2196,15 @@ export default function App() {
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showPublish,     setShowPublish]     = useState(false)
   const [publishConfig,   setPublishConfig]   = useState(null)
+  const [showHistory,     setShowHistory]     = useState(false)
+  const [showCalibrate,   setShowCalibrate]   = useState(false)
 
   const saved = loadSettings()
   const [keybinds,    setKeybinds]    = useState(saved.keybinds?.length === 4 ? saved.keybinds : [...DEFAULT_LANE_KEYS])
   const [laneColors,  setLaneColors]  = useState(Array.isArray(saved.laneColors) && saved.laneColors.length === 4 ? saved.laneColors : [...LANE_COLORS])
   const [sfxVolume,   setSfxVolume]   = useState(saved.sfxVolume   ?? 0.7)
   const [musicVolume, setMusicVolume] = useState(saved.musicVolume ?? 1.0)
+  const [showStars,   setShowStars]   = useState(saved.showStars   !== false)
 
   const handleSettingsChange = patch => {
     const next = { ...loadSettings(), ...patch }
@@ -1640,14 +2212,18 @@ export default function App() {
     if (patch.laneColors)  setLaneColors(patch.laneColors)
     if (patch.sfxVolume   !== undefined) setSfxVolume(patch.sfxVolume)
     if (patch.musicVolume !== undefined) setMusicVolume(patch.musicVolume)
+    if (patch.showStars   !== undefined) setShowStars(patch.showStars)
     localStorage.setItem('kronox-settings', JSON.stringify(next))
   }
 
   const handleGameStop = (status, stats) => {
     if (status === 'complete') {
       const grade = calcGrade(stats.accuracy)
-      addPlayerGameResult(GUEST_ID, { ...stats, grade })
-      setGameStats({ ...stats, grade })
+      if (!gameConfig?.autoplay) {
+        addPlayerGameResult(GUEST_ID, { ...stats, grade })
+        saveHistoryEntry({ songTitle: stats.songTitle, grade, score: stats.score, accuracy: stats.accuracy, date: new Date().toLocaleDateString(), perfect: stats.perfect, good: stats.good, bad: stats.bad, miss: stats.miss })
+      }
+      setGameStats({ ...stats, grade, autoplay: gameConfig?.autoplay })
       setScreen('results')
     } else {
       setScreen('setup')
@@ -1677,6 +2253,8 @@ export default function App() {
           settingsOpen={showSettings}
           onOpenCatalog={() => setScreen('catalog')}
           onOpenLeaderboard={() => setShowLeaderboard(true)}
+          onOpenHistory={() => setShowHistory(true)}
+          onOpenCalibrate={() => setShowCalibrate(true)}
         />
       )}
 
@@ -1714,10 +2292,13 @@ export default function App() {
         laneColors={laneColors}
         sfxVolume={sfxVolume}
         musicVolume={musicVolume}
+        showStars={showStars}
         onChange={handleSettingsChange}
         onClose={() => setShowSettings(false)}
       />
       {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      {showHistory     && <HistoryModal    onClose={() => setShowHistory(false)} />}
+      {showCalibrate   && <CalibrationModal onClose={() => setShowCalibrate(false)} sfxVolume={sfxVolume} />}
       {showPublish && publishConfig && (
         <PublishModal config={publishConfig} onClose={() => { setShowPublish(false); setPublishConfig(null) }} />
       )}

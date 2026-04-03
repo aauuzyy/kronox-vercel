@@ -74,10 +74,12 @@ export async function fetchCatalog({ sortBy = 'newest', limitCount = 100 } = {})
     audioFileName: r.audio_file_name,
     duration:      r.duration,
     plays:         r.plays,
+    likes:         r.likes || 0,
     publishedAt:   new Date(r.published_at),
   }))
 
   if (sortBy === 'plays') results.sort((a, b) => (b.plays || 0) - (a.plays || 0))
+  if (sortBy === 'likes') results.sort((a, b) => (b.likes || 0) - (a.likes || 0))
   return results
 }
 
@@ -87,4 +89,68 @@ export async function incrementPlays(id) {
     const sb = getClient()
     await sb.rpc('increment_plays', { p_id: id })
   } catch { /* best-effort */ }
+}
+
+/**
+ * Atomically add a game result to the global players table.
+ * Calls add_player_result RPC — see supabase-players-likes.sql.
+ */
+export async function upsertPlayerResult(guestId, { score, accuracy, grade, perfect, good, bad, miss }) {
+  try {
+    const sb = getClient()
+    await sb.rpc('add_player_result', {
+      p_id:       guestId,
+      p_score:    score    || 0,
+      p_accuracy: accuracy || 0,
+      p_grade:    grade    || 'C',
+      p_perfect:  perfect  || 0,
+      p_good:     good     || 0,
+      p_bad:      bad      || 0,
+      p_miss:     miss     || 0,
+    })
+  } catch { /* best-effort, local stats still saved */ }
+}
+
+/** Fetch global leaderboard from players table (top 50 by total_score). */
+export async function fetchGlobalLeaderboard() {
+  const sb = getClient()
+  const { data, error } = await sb
+    .from('players')
+    .select('id,total_score,games_played,best_accuracy,best_grade,total_perfect,total_good,total_bad,total_miss')
+    .order('total_score', { ascending: false })
+    .limit(50)
+  if (error) throw error
+  return (data || []).map(r => ({
+    id:           r.id,
+    totalScore:   r.total_score,
+    gamesPlayed:  r.games_played,
+    bestAccuracy: r.best_accuracy,
+    bestGrade:    r.best_grade,
+    totalPerfect: r.total_perfect,
+    totalGood:    r.total_good,
+    totalBad:     r.total_bad,
+    totalMiss:    r.total_miss,
+  }))
+}
+
+/**
+ * Toggle like on a chart. Returns true if now liked, false if unliked.
+ * Calls toggle_like RPC — see supabase-players-likes.sql.
+ */
+export async function toggleLike(chartId, guestId) {
+  const sb = getClient()
+  const { data, error } = await sb.rpc('toggle_like', { p_chart_id: chartId, p_guest_id: guestId })
+  if (error) throw error
+  return !!data
+}
+
+/**
+ * Fetch charts the current guest has liked (returns set of chart IDs).
+ */
+export async function fetchMyLikes(guestId) {
+  try {
+    const sb = getClient()
+    const { data } = await sb.from('likes').select('chart_id').eq('guest_id', guestId)
+    return new Set((data || []).map(r => r.chart_id))
+  } catch { return new Set() }
 }
