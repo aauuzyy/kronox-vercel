@@ -91,20 +91,49 @@ const GRADE_COLORS = { 'S+': '#ffd700', 'S': '#c0c0c0', 'A': '#66ff99', 'B': '#4
 
 // ─── TitleBar ─────────────────────────────────────────────────────────────────
 function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderboard, onOpenHistory, onOpenCalibrate }) {
+  const isMobile = window.innerWidth < 600
+  const [menuOpen, setMenuOpen] = React.useState(false)
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      height: 36, padding: '0 16px', background: '#111111',
+      height: 44, padding: '0 16px', background: '#111111',
       borderBottom: '1px solid #1e1e1e', flexShrink: 0, userSelect: 'none',
+      position: 'relative', zIndex: 600,
     }}>
       <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#ffffff', letterSpacing: 4 }}>KRONOX</span>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <TitleBarBtn onClick={onOpenHistory}>HISTORY</TitleBarBtn>
-        <TitleBarBtn onClick={onOpenLeaderboard}>SCORES</TitleBarBtn>
-        <TitleBarBtn onClick={onOpenCatalog}>CATALOG</TitleBarBtn>
-        <TitleBarBtn onClick={onOpenCalibrate}>CALIBRATE</TitleBarBtn>
-        <TitleBarBtn onClick={onToggleSettings} active={settingsOpen}>SETTINGS</TitleBarBtn>
-      </div>
+      {isMobile ? (
+        <>
+          <button onClick={() => setMenuOpen(o => !o)}
+            style={{ fontFamily: 'Arial', fontSize: 16, background: 'transparent', border: '1px solid #2a2a2a', color: '#888', borderRadius: 6, padding: '4px 12px', cursor: 'pointer' }}>
+            {menuOpen ? '✕' : '☰'}
+          </button>
+          {menuOpen && (
+            <div style={{
+              position: 'absolute', top: 44, right: 0, left: 0,
+              background: '#111', borderBottom: '1px solid #1e1e1e',
+              display: 'flex', flexDirection: 'column', zIndex: 601,
+            }}>
+              {[['HISTORY', onOpenHistory], ['SCORES', onOpenLeaderboard], ['CATALOG', onOpenCatalog],
+                ['CALIBRATE', onOpenCalibrate], ['SETTINGS', onToggleSettings]].map(([label, fn]) => (
+                <button key={label} onClick={() => { fn(); setMenuOpen(false) }}
+                  style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '14px 20px',
+                    background: 'transparent', border: 'none', borderBottom: '1px solid #1a1a1a',
+                    color: '#888', textAlign: 'left', cursor: 'pointer' }}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <TitleBarBtn onClick={onOpenHistory}>HISTORY</TitleBarBtn>
+          <TitleBarBtn onClick={onOpenLeaderboard}>SCORES</TitleBarBtn>
+          <TitleBarBtn onClick={onOpenCatalog}>CATALOG</TitleBarBtn>
+          <TitleBarBtn onClick={onOpenCalibrate}>CALIBRATE</TitleBarBtn>
+          <TitleBarBtn onClick={onToggleSettings} active={settingsOpen}>SETTINGS</TitleBarBtn>
+        </div>
+      )}
     </div>
   )
 }
@@ -1174,7 +1203,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       )}
 
       {/* Sliders */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 600 ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
         <SliderField label="SCROLL SPEED" value={speed} min={0.5} max={5} step={0.1} display={speed.toFixed(1)} onChange={v => { setSpeed(v); saveSettings({ speed: v }) }} />
         <SliderField label="BPM" value={bpm} min={60} max={240} step={1} display={bpm} onChange={v => { setBpm(v); saveSettings({ bpm: v }) }} />
         <SliderField label="NOTE DENSITY" value={subdivision} min={1} max={8} step={1}
@@ -1436,11 +1465,12 @@ function GameView({ config, onStop }) {
   const keybinds   = config.keybinds   || DEFAULT_LANE_KEYS
   const laneColors = config.laneColors || LANE_COLORS
 
-  const LANE_W          = 90
-  const LANE_GAP        = 8
-  const NOTE_SIZE       = 74
+  const isMobile = window.innerWidth < 600
+  const LANE_W          = isMobile ? Math.floor((window.innerWidth - 24) / 4) : 90
+  const LANE_GAP        = isMobile ? 4 : 8
+  const NOTE_SIZE       = isMobile ? Math.round(LANE_W * 0.82) : 74
   const TOTAL_W         = LANE_W * 4 + LANE_GAP * 3
-  const RECEPTOR_BOTTOM = 70
+  const RECEPTOR_BOTTOM = isMobile ? 50 : 70
 
   const [hud,             setHud]             = useState({ score: 0, combo: 0, multiplier: 1, health: 80 })
   const [judgment,        setJudgment]        = useState({ text: '', color: '#fff', visible: false, key: 0 })
@@ -1940,7 +1970,10 @@ function GameView({ config, onStop }) {
               background: `${laneColors[l]}07`,
               borderLeft:  `1px solid ${laneColors[l]}1a`,
               borderRight: `1px solid ${laneColors[l]}1a`,
-            }}>
+            }}
+              onTouchStart={e => { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=true; return n }); hitNote(l) }}
+              onTouchEnd={e => { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=false; return n }); releaseHold(l) }}
+            >
               {/* Receptor */}
               <div style={{
                 position: 'absolute', bottom: RECEPTOR_BOTTOM, left: '50%',
@@ -2026,19 +2059,21 @@ function GameView({ config, onStop }) {
       </div>
 
       {/* Control bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '9px 16px', background: '#111', borderTop: '1px solid #1e1e1e', flexShrink: 0 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '12px 16px' : '9px 16px', background: '#111', borderTop: '1px solid #1e1e1e', flexShrink: 0 }}>
         <CtrlBtn onClick={togglePause}>{paused ? 'RESUME' : 'PAUSE'}</CtrlBtn>
         <CtrlBtn onClick={stopGame}>QUIT</CtrlBtn>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
-          {keybinds.map((k, i) => (
-            <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
-              <span style={{ fontFamily: 'Arial', fontSize: 5, color: '#333', letterSpacing: 1 }}>{LANE_NAMES[i]}</span>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${receptorPressed[i] ? laneColors[i] : '#333333'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: receptorPressed[i] ? laneColors[i] + '22' : 'transparent', transition: 'all 0.05s' }}>
-                <span style={{ fontFamily: 'Arial', fontSize: 7, color: receptorPressed[i] ? laneColors[i] : '#444' }}>{keyLabel(k)}</span>
+        {!isMobile && (
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
+            {keybinds.map((k, i) => (
+              <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
+                <span style={{ fontFamily: 'Arial', fontSize: 5, color: '#333', letterSpacing: 1 }}>{LANE_NAMES[i]}</span>
+                <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${receptorPressed[i] ? laneColors[i] : '#333333'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: receptorPressed[i] ? laneColors[i] + '22' : 'transparent', transition: 'all 0.05s' }}>
+                  <span style={{ fontFamily: 'Arial', fontSize: 7, color: receptorPressed[i] ? laneColors[i] : '#444' }}>{keyLabel(k)}</span>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )
@@ -2084,7 +2119,7 @@ function Results({ stats, onExit, onPlayAgain }) {
       `}</style>
 
       {/* Top: grade + title */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 36, padding: '40px 52px 28px', borderBottom: '1px solid #141414' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: window.innerWidth < 600 ? 16 : 36, padding: window.innerWidth < 600 ? '24px 20px 20px' : '40px 52px 28px', borderBottom: '1px solid #141414', flexWrap: 'wrap' }}>
         <div style={{
           width: 112, height: 112, borderRadius: 18, flexShrink: 0,
           border: `2px solid ${gradeColor}33`, background: `${gradeColor}0d`,
@@ -2105,7 +2140,7 @@ function Results({ stats, onExit, onPlayAgain }) {
       </div>
 
       {/* Judgment breakdown */}
-      <div style={{ padding: '24px 52px', display: 'flex', flexDirection: 'column', gap: 11, animation: 'slideUp 0.4s ease-out 0.16s both' }}>
+      <div style={{ padding: window.innerWidth < 600 ? '20px 20px' : '24px 52px', display: 'flex', flexDirection: 'column', gap: 11, animation: 'slideUp 0.4s ease-out 0.16s both' }}>
         <div style={{ fontSize: 7, letterSpacing: 3, color: '#333', marginBottom: 2 }}>BREAKDOWN</div>
         {judgments.map(j => (
           <div key={j.label} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
@@ -2120,7 +2155,7 @@ function Results({ stats, onExit, onPlayAgain }) {
       </div>
 
       {/* Secondary stats */}
-      <div style={{ padding: '0 52px 28px', display: 'flex', gap: 10, flexWrap: 'wrap', animation: 'slideUp 0.4s ease-out 0.24s both' }}>
+      <div style={{ padding: window.innerWidth < 600 ? '0 20px 20px' : '0 52px 28px', display: 'flex', gap: 10, flexWrap: 'wrap', animation: 'slideUp 0.4s ease-out 0.24s both' }}>
         {[
           { label: 'TOTAL HITS', value: stats.totalHits },
           { label: 'DURATION',   value: `${Math.floor(stats.duration)}s` },
@@ -2135,7 +2170,7 @@ function Results({ stats, onExit, onPlayAgain }) {
       </div>
 
       {/* Buttons */}
-      <div style={{ display: 'flex', gap: 10, padding: '0 52px', marginTop: 'auto', paddingBottom: 40, animation: 'slideUp 0.4s ease-out 0.3s both' }}>
+      <div style={{ display: 'flex', gap: 10, padding: window.innerWidth < 600 ? '0 20px' : '0 52px', marginTop: 'auto', paddingBottom: 40, animation: 'slideUp 0.4s ease-out 0.3s both' }}>
         <button onClick={handlePlayAgain}
           style={{ flex: 1, padding: '13px 0', borderRadius: 6, border: `1px solid ${gradeColor}33`, background: `${gradeColor}0d`, fontSize: 11, letterSpacing: 2, fontWeight: 'bold', color: gradeColor, cursor: 'pointer', transition: 'all 0.15s' }}
           onMouseEnter={e => { e.currentTarget.style.background = gradeColor + '1a' }}
