@@ -1072,97 +1072,148 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       const ctx = new OfflineAudioContext(1, 1, 44100)
       const decoded = await ctx.decodeAudioData(arrayBuf)
       const raw = decoded.getChannelData(0)
-      const actualRate = decoded.sampleRate
+      const sr = decoded.sampleRate
 
-      // ── Same beat detection as the star pulse system ──────────────────────
-      // Process every 1024 samples (~23ms at 44100Hz), identical to the analyser
-      const FRAME = 1024
-      const nFrames = Math.floor(raw.length / FRAME)
-      const frameTimes = []
-      let base = 0
-      for (let f = 0; f < nFrames; f++) {
-        const start = f * FRAME
+      const secPerStep  = 60 / (bpm * subdivision)
+      const totalSteps  = beats * subdivision
+      const sampPerStep = Math.max(1, Math.floor(secPerStep * sr))
+
+      // ── Per-step RMS energy ───────────────────────────────────────────────
+      const stepRMS = new Float32Array(totalSteps)
+      for (let i = 0; i < totalSteps; i++) {
+        const s = i * sampPerStep, e = Math.min(s + sampPerStep, raw.length)
+        if (s >= raw.length) break
         let sum = 0
-        for (let i = start; i < start + FRAME; i++) { const v = raw[i]; sum += v * v }
-        const rms = Math.sqrt(sum / FRAME)
+        for (let j = s; j < e; j++) sum += raw[j] * raw[j]
+        stepRMS[i] = Math.sqrt(sum / (e - s))
+      }
+
+      // ── Onset strength per step: same algorithm as the live star pulse ────
+      // 1024-sample frames, RMS vs slow baseline, onset = (rms-base*0.5)/(base*1.5)
+      const onsetStr = new Float32Array(totalSteps)
+      let base = 0
+      const nf = Math.floor(raw.length / 1024)
+      for (let f = 0; f < nf; f++) {
+        const s = f * 1024
+        let sum = 0
+        for (let i = s; i < s + 1024; i++) { const v = raw[i]; sum += v * v }
+        const rms = Math.sqrt(sum / 1024)
         if (base === 0) base = Math.max(rms, 0.001)
         base = base * 0.997 + rms * 0.003
         const onset = Math.max(0, (rms - base * 0.5) / Math.max(base * 1.5, 0.001))
-        if (onset > 0.25) frameTimes.push(f * FRAME / actualRate)
+        const step = Math.round(f * 1024 / sr / secPerStep)
+        if (step >= 1 && step < totalSteps && onset > onsetStr[step]) onsetStr[step] = onset
       }
 
-      // ── Snap to nearest grid step, deduplicate ────────────────────────────
-      const secPerStep = 60 / (bpm * subdivision)
-      const totalSteps = beats * subdivision
-      const stepHits = new Map()
-      for (const t of frameTimes) {
-        const step = Math.round(t / secPerStep)
-        if (step < 2 || step >= totalSteps) continue
-        const dist = Math.abs(t - step * secPerStep)
-        const existing = stepHits.get(step)
-        if (!existing || dist < Math.abs(existing - step * secPerStep)) stepHits.set(step, t)
-      }
-      let onsets = [...stepHits.keys()].sort((a, b) => a - b)
-
-      // ── Density guard: target ~70%, fill sparse songs ─────────────────────
-      const samplesPerStep = Math.floor(secPerStep * actualRate)
-      const stepEnergy = new Float32Array(totalSteps)
-      for (let i = 0; i < totalSteps; i++) {
-        const s = i * samplesPerStep
-        const e = Math.min(s + samplesPerStep, raw.length)
-        let sum = 0
-        for (let j = s; j < e; j++) sum += raw[j] ** 2
-        stepEnergy[i] = Math.sqrt(sum / Math.max(1, e - s))
-      }
-      const targetCount = Math.round(totalSteps * 0.70)
-      if (onsets.length < targetCount * 0.5) {
-        const maxRMS = Math.max(...stepEnergy)
-        const filled = new Set(onsets)
-        for (let i = 2; i < totalSteps; i++) {
-          if (!filled.has(i) && stepEnergy[i] >= maxRMS * 0.35) filled.add(i)
-        }
-        onsets = [...filled].sort((a, b) => a - b)
-      }
-      if (onsets.length > Math.round(totalSteps * 0.85)) {
-        const scored = onsets.map(s => [s, stepEnergy[s]]).sort((a, b) => b[1] - a[1])
-        const keep = new Set(scored.slice(0, Math.round(totalSteps * 0.85)).map(([s]) => s))
-        onsets = onsets.filter(s => keep.has(s))
+      // ── Initial active steps: onset threshold ─────────────────────────────
+      const active = new Uint8Array(totalSteps)
+      for (let i = 1; i < totalSteps; i++) {
+        if (onsetStr[i] >= 0.15) active[i] = 1
       }
 
-      // ── Hold note detection ───────────────────────────────────────────────
-      const holdAt = new Map()
-      const onsetSet = new Set(onsets)
-      for (const step of onsets) {
-        const peak = stepEnergy[step]
-        if (peak < 0.005) continue
-        let len = 1
-        for (let k = step + 1; k < totalSteps && k < step + subdivision * 8; k++) {
-          if (stepEnergy[k] >= peak * 0.65 && !onsetSet.has(k)) len++
-          else break
-        }
-        if (len >= subdivision * 2) holdAt.set(step, len)
+      // ── Density fill: build to 78% then cap at 85% ───────────────────────
+      // Count using loop (avoids spread-operator stack overflow on large arrays)
+      let cnt = 0; for (let i = 0; i < totalSteps; i++) cnt += active[i]
+      const TARGET = Math.round(totalSteps * 0.78)
+      const CAP    = Math.round(totalSteps * 0.85)
+      if (cnt < TARGET) {
+        // Rank inactive steps by RMS, fill highest-energy ones first
+        const inactive = []
+        for (let i = 1; i < totalSteps; i++) if (!active[i]) inactive.push(i)
+        inactive.sort((a, b) => stepRMS[b] - stepRMS[a])
+        const need = Math.min(TARGET - cnt, inactive.length)
+        for (let n = 0; n < need; n++) { active[inactive[n]] = 1; cnt++ }
+      }
+      if (cnt > CAP) {
+        // Trim weakest active steps
+        const actArr = []
+        for (let i = 1; i < totalSteps; i++) if (active[i]) actArr.push([i, onsetStr[i] + stepRMS[i]])
+        actArr.sort((a, b) => a[1] - b[1])
+        const remove = cnt - CAP
+        for (let n = 0; n < remove; n++) active[actArr[n][0]] = 0
       }
 
-      // ── Build chart ───────────────────────────────────────────────────────
+      // ── Energy percentiles for chord decisions ────────────────────────────
+      const vals = []
+      for (let i = 1; i < totalSteps; i++) if (active[i]) vals.push(stepRMS[i])
+      vals.sort((a, b) => a - b)
+      const p40 = vals[Math.floor(vals.length * 0.40)] ?? 0
+      const p70 = vals[Math.floor(vals.length * 0.70)] ?? 0
+      const p85 = vals[Math.floor(vals.length * 0.85)] ?? 0
+
+      // ── Chord lane shapes ─────────────────────────────────────────────────
+      // 2-note chords: mirrored pairs feel natural to play
+      const CHORD2 = [[0, 3], [1, 2], [0, 2], [1, 3], [0, 1], [2, 3]]
+      // 3-note chords: spread across the 4 lanes
+      const CHORD3 = [[0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2]]
+      // Half-beat boundary for extra chord triggers
+      const HALF = Math.max(1, Math.floor(subdivision / 2))
+
+      // ── Build chart with patterns, chords and holds ───────────────────────
       undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
       const newChart = buildChart(totalSteps)
-      let prevLane = -1
       const consumed = new Set()
-      for (const step of onsets) {
-        if (consumed.has(step)) continue
-        let lane = Math.floor(Math.random() * 4)
-        if (lane === prevLane) lane = (lane + 1 + Math.floor(Math.random() * 3)) % 4
-        prevLane = lane
-        const holdLen = holdAt.get(step) || 0
-        if (holdLen >= subdivision * 2) {
-          newChart[step][lane] = holdLen
-          for (let k = step + 1; k < step + holdLen && k < totalSteps; k++) {
-            newChart[k][lane] = -1; consumed.add(k)
-          }
+      let phase = 0   // cycles 0-1-2-3 for stream lane selection
+
+      for (let i = 1; i < totalSteps; i++) {
+        if (!active[i] || consumed.has(i)) continue
+
+        const e = stepRMS[i], os = onsetStr[i]
+        const onBeat     = (i % subdivision === 0)
+        const onHalfBeat = (i % HALF === 0)
+
+        // ── Lane selection: chord width based on energy + beat position ─────
+        let lanes
+        if (e >= p85 && os > 0.4) {
+          // Strongest hits: 3-note chord
+          lanes = CHORD3[phase % CHORD3.length]
+          phase += lanes.length
+        } else if (e >= p70 && os > 0.25) {
+          // Strong hit: 2-note chord
+          lanes = CHORD2[phase % CHORD2.length]
+          phase += 2
+        } else if (e >= p40 && (onBeat || onHalfBeat) && Math.random() < 0.45) {
+          // Medium energy on a beat: occasional 2-note chord
+          lanes = CHORD2[phase % CHORD2.length]
+          phase += 2
         } else {
-          newChart[step][lane] = 1
+          // Single note: cycling stream pattern 0→1→2→3→0→1→2→3…
+          lanes = [phase % 4]
+          phase++
+        }
+
+        // ── Hold detection: scan forward for sustained energy ─────────────
+        // Requires energy stays ≥ 35% of peak for consecutive steps
+        let holdLane = -1, holdSteps = 0
+        if (os > 0.28 || e >= p70) {
+          const peak = e
+          let run = 0
+          for (let k = i + 1; k < totalSteps && k < i + subdivision * 4; k++) {
+            if (stepRMS[k] >= peak * 0.35) run++
+            else break
+          }
+          // Hold needs at least 1 full beat worth of steps
+          if (run >= subdivision) {
+            holdLane  = lanes[0]
+            holdSteps = run + 1
+            // Mark hold-body steps as consumed so they don't spawn their own notes
+            for (let k = i + 1; k < i + holdSteps && k < totalSteps; k++) {
+              active[k] = 0; consumed.add(k)
+            }
+          }
+        }
+
+        // ── Write note data to chart ──────────────────────────────────────
+        for (const lane of lanes) {
+          if (lane === holdLane && holdSteps >= subdivision) {
+            newChart[i][lane] = holdSteps
+            for (let k = i + 1; k < i + holdSteps && k < totalSteps; k++) newChart[k][lane] = -1
+          } else {
+            newChart[i][lane] = 1
+          }
         }
       }
+
       setChart(newChart); saveSettings({ chart: newChart })
     } catch (err) {
       console.error('AI chart error:', err)
