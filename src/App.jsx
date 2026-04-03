@@ -58,16 +58,15 @@ function calcGrade(accuracy) {
 // ── Difficulty rating (0.5 – 30) ──────────────────────────────────────────────
 function calcDifficulty(chart, bpm, speed, subdivision) {
   if (!chart?.length) return 0
-  const noteCount = chart.flat().filter(v => v > 0).length
+  const noteCount   = chart.flat().filter(v => v > 0).length
   if (!noteCount) return 0
-  const stepDurSec  = 60 / Math.max(bpm, 1) / Math.max(subdivision, 1)
-  const songDurSec  = chart.length * stepDurSec
-  const density     = noteCount / Math.max(songDurSec, 1)           // notes/sec
-  const densityScore = Math.min(density / 12, 1) * 10               // 0–10
-  const bpmScore     = Math.min(Math.max(bpm - 60, 0) / 180, 1) * 10 // 0–10
-  const speedScore   = Math.min(Math.max(speed - 0.5, 0) / 4.5, 1) * 5 // 0–5
-  const subScore     = Math.min((subdivision - 1) / 7, 1) * 5       // 0–5
-  return Math.max(0.5, Math.round((densityScore + bpmScore + speedScore + subScore) * 10) / 10)
+  // Factor 1: total note count — more notes = harder (0–10)
+  const countScore  = Math.min(noteCount / 1500, 1) * 10
+  // Factor 2: note density — notes per step (0–10). Captures interplay of count + song length.
+  const densityScore = Math.min((noteCount / Math.max(chart.length, 1)) / 1.2, 1) * 10
+  // Factor 3: scroll speed — faster = harder (0–10)
+  const speedScore  = Math.min(Math.max(speed - 0.5, 0) / 4.5, 1) * 10
+  return Math.max(0.5, Math.round((countScore + densityScore + speedScore) * 10) / 10)
 }
 
 function diffColor(d) {
@@ -2081,7 +2080,7 @@ function GameView({ config, onStop }) {
             const key  = `${b}-${l}`
             const cell = config.chart[b][l]
             // Skip notes that are before the preview start offset
-            if (config.audioStartOffset && b * subdivMs < (config.audioStartOffset * 1000 - 500)) {
+            if (config.audioStartOffset && b * subdivMs < config.audioStartOffset * 1000) {
               if (!s.completedBeats.has(key)) s.completedBeats.add(key)
               continue
             }
@@ -2663,7 +2662,7 @@ export default function App() {
   }
 
   const handleGameStop = (status, stats) => {
-    if (status === 'preview') { setScreen('catalog'); return }
+    if (status === 'preview' || gameConfig?.previewDuration) { setScreen('catalog'); return }
     if (status === 'complete') {
       const grade = calcGrade(stats.accuracy)
       if (!gameConfig?.autoplay) {
