@@ -5,6 +5,17 @@ const LANE_NAMES        = ['LEFT', 'DOWN', 'UP', 'RIGHT']
 const LANE_COLORS       = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff']
 const DEFAULT_BEATS     = 32
 
+// ── Guest identity ────────────────────────────────────────────────────────────
+const GUEST_ID = (() => {
+  let id = localStorage.getItem('kronox-guest-id')
+  if (!id) {
+    id = 'Guest#' + Math.floor(10000000 + Math.random() * 90000000)
+    localStorage.setItem('kronox-guest-id', id)
+  }
+  return id
+})()
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('kronox-settings') || '{}') } catch { return {} }
 }
@@ -12,36 +23,67 @@ function buildChart(beats) {
   return Array.from({ length: beats }, () => [0, 0, 0, 0])
 }
 
-// ─── TitleBar ────────────────────────────────────────────────────────────────
-function TitleBar({ onOpenSettings }) {
+// ── Leaderboard helpers ───────────────────────────────────────────────────────
+function loadLeaderboard() {
+  try { return JSON.parse(localStorage.getItem('kronox-leaderboard') || '[]') } catch { return [] }
+}
+function saveLeaderboardEntry(entry) {
+  const lb = loadLeaderboard()
+  lb.push(entry)
+  lb.sort((a, b) => b.score - a.score)
+  localStorage.setItem('kronox-leaderboard', JSON.stringify(lb.slice(0, 100)))
+}
+function calcGrade(accuracy) {
+  if (accuracy >= 95) return 'S+'
+  if (accuracy >= 85) return 'S'
+  if (accuracy >= 75) return 'A'
+  if (accuracy >= 65) return 'B'
+  return 'C'
+}
+const GRADE_COLORS = { 'S+': '#ffd700', 'S': '#c0c0c0', 'A': '#66ff99', 'B': '#4d96ff', 'C': '#888' }
+
+// ─── TitleBar ─────────────────────────────────────────────────────────────────
+function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderboard }) {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       height: 36, padding: '0 16px', background: '#111111',
-      borderBottom: '1px solid #1e1e1e', flexShrink: 0,
-      userSelect: 'none',
+      borderBottom: '1px solid #1e1e1e', flexShrink: 0, userSelect: 'none',
     }}>
       <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#ffffff', letterSpacing: 4 }}>KRONOX</span>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        <button onClick={onOpenSettings}
-          style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '4px 10px', background: 'transparent', border: '1px solid #2a2a2a', color: '#555', borderRadius: 4 }}
-          onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#444' }}
-          onMouseLeave={e => { e.currentTarget.style.color = '#555'; e.currentTarget.style.borderColor = '#2a2a2a' }}>
-          SETTINGS
-        </button>
+        <TitleBarBtn onClick={onOpenLeaderboard}>SCORES</TitleBarBtn>
+        <TitleBarBtn onClick={onOpenCatalog}>CATALOG</TitleBarBtn>
+        <TitleBarBtn onClick={onToggleSettings} active={settingsOpen}>SETTINGS</TitleBarBtn>
       </div>
     </div>
   )
 }
+function TitleBarBtn({ onClick, children, active }) {
+  return (
+    <button onClick={onClick}
+      style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '4px 10px', background: active ? 'rgba(255,255,255,0.07)' : 'transparent', border: `1px solid ${active ? '#444' : '#2a2a2a'}`, color: active ? '#fff' : '#555', borderRadius: 4, transition: 'all 0.12s', cursor: 'pointer' }}
+      onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#444' }}
+      onMouseLeave={e => { e.currentTarget.style.color = active ? '#fff' : '#555'; e.currentTarget.style.borderColor = active ? '#444' : '#2a2a2a' }}>
+      {children}
+    </button>
+  )
+}
 
-// ─── Settings Modal ───────────────────────────────────────────────────────────
-function SettingsModal({ keybinds, onSave, onClose }) {
-  const [keys, setKeys]           = useState([...keybinds])
+// ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
+function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, onChange, onClose }) {
+  const [keys,      setKeys]      = useState([...keybinds])
   const [listening, setListening] = useState(null)
-  const [conflict, setConflict]   = useState(null)
+  const [conflict,  setConflict]  = useState(null)
+  const [localSpeed, setLocalSpeed] = useState(() => loadSettings().speed || 2.0)
+
+  // Close listening state when panel closes
+  useEffect(() => { if (!open) setListening(null) }, [open])
+  // Sync keys if parent keybinds change
+  useEffect(() => { setKeys([...keybinds]) }, [keybinds])
 
   useEffect(() => {
-    if (listening === null) return
+    if (!open || listening === null) return
     const handler = e => {
       e.preventDefault()
       const ci = keys.findIndex((k, i) => k === e.key && i !== listening)
@@ -51,9 +93,9 @@ function SettingsModal({ keybinds, onSave, onClose }) {
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [listening, keys])
+  }, [listening, keys, open])
 
-  const label = k => {
+  const labelKey = k => {
     if (k === ' ') return 'Space'
     if (k === 'ArrowLeft') return '←'
     if (k === 'ArrowRight') return '→'
@@ -62,50 +104,410 @@ function SettingsModal({ keybinds, onSave, onClose }) {
     return k.toUpperCase()
   }
 
+  const Divider = () => <div style={{ height: 1, background: '#181818', margin: '20px 0' }} />
+
+  const SectionLabel = ({ children }) => (
+    <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#3a3a3a', letterSpacing: 3, marginBottom: 14 }}>{children}</div>
+  )
+
+  const SliderRow = ({ label, value, min, max, step, onChg, fmt }) => (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>{label}</span>
+        <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#555' }}>{fmt ? fmt(value) : value}</span>
+      </div>
+      <input type="range" min={min} max={max} step={step} value={value}
+        onChange={e => onChg(Number(e.target.value))}
+        style={{ width: '100%', accentColor: '#ffffff', cursor: 'pointer' }} />
+    </div>
+  )
+
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div style={{ background: '#181818', border: '1px solid #2a2a2a', borderRadius: 8, padding: '28px 32px', minWidth: 340, display: 'flex', flexDirection: 'column', gap: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>SETTINGS</span>
-          <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 10, color: '#555' }}>✕</button>
+    <>
+      {/* Backdrop — click to close */}
+      {open && (
+        <div onClick={onClose} style={{ position: 'fixed', inset: 0, zIndex: 499 }} />
+      )}
+      <div style={{
+        position: 'fixed', top: 0, right: 0, bottom: 0, width: 290,
+        background: '#0c0c0c', borderLeft: '1px solid #1a1a1a',
+        transform: open ? 'translateX(0)' : 'translateX(100%)',
+        transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
+        zIndex: 500, display: 'flex', flexDirection: 'column',
+        boxShadow: open ? '-12px 0 40px rgba(0,0,0,0.6)' : 'none',
+      }}>
+      {/* Header */}
+      <div style={{ padding: '0 20px', height: 36, borderBottom: '1px solid #1a1a1a', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+        <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#444', letterSpacing: 4 }}>SETTINGS</span>
+      </div>
+
+      {/* Scrollable body */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '20px 20px 40px' }}>
+
+        {/* NOTE COLORS */}
+        <SectionLabel>NOTE COLORS</SectionLabel>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 4 }}>
+          {LANE_NAMES.map((name, i) => (
+            <label key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+              <div style={{ position: 'relative', width: 30, height: 30, borderRadius: 6, background: laneColors[i] + '22', border: `1.5px solid ${laneColors[i]}66`, overflow: 'hidden', flexShrink: 0 }}>
+                <input type="color" value={laneColors[i]}
+                  onChange={e => {
+                    const next = [...laneColors]; next[i] = e.target.value
+                    onChange({ laneColors: next })
+                  }}
+                  style={{ position: 'absolute', inset: '-4px', width: 'calc(100% + 8px)', height: 'calc(100% + 8px)', border: 'none', background: 'none', cursor: 'pointer', padding: 0, opacity: 0 }} />
+                <div style={{ position: 'absolute', inset: 0, borderRadius: 5, background: laneColors[i] + '55', display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
+                  <div style={{ width: 10, height: 10, borderRadius: '50%', background: laneColors[i] }} />
+                </div>
+              </div>
+              <span style={{ fontFamily: 'Arial', fontSize: 8, color: laneColors[i], letterSpacing: 1 }}>{name}</span>
+            </label>
+          ))}
+        </div>
+        <button onClick={() => onChange({ laneColors: [...LANE_COLORS] })}
+          style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '5px 10px', marginTop: 10, borderRadius: 4, background: 'transparent', border: '1px solid #222', color: '#333', cursor: 'pointer' }}>
+          RESET COLORS
+        </button>
+
+        <Divider />
+
+        {/* VOLUME */}
+        <SectionLabel>VOLUME</SectionLabel>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <SliderRow label="SFX" value={sfxVolume} min={0} max={1} step={0.01}
+            onChg={v => onChange({ sfxVolume: v })}
+            fmt={v => Math.round(v * 100) + '%'} />
+          <SliderRow label="MUSIC" value={musicVolume} min={0} max={1} step={0.01}
+            onChg={v => onChange({ musicVolume: v })}
+            fmt={v => Math.round(v * 100) + '%'} />
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-          <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#555', letterSpacing: 3 }}>KEY BINDINGS</span>
+        <Divider />
+
+        {/* SCROLL SPEED */}
+        <SectionLabel>SCROLL SPEED</SectionLabel>
+        <SliderRow label="DEFAULT SPEED" value={localSpeed} min={0.5} max={10} step={0.5}
+          onChg={v => {
+            setLocalSpeed(v)
+            const s = loadSettings()
+            localStorage.setItem('kronox-settings', JSON.stringify({ ...s, speed: v }))
+          }}
+          fmt={v => v.toFixed(1) + '×'} />
+        <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a', marginTop: 8, letterSpacing: 1 }}>Applied on next session</div>
+
+        <Divider />
+
+        {/* KEYBINDINGS */}
+        <SectionLabel>KEYBINDINGS</SectionLabel>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {LANE_NAMES.map((name, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: conflict === i ? '#ff4444' : LANE_COLORS[i], flexShrink: 0, transition: 'background 0.2s' }} />
-                <span style={{ fontFamily: 'Arial', fontSize: 11, color: conflict === i ? '#ff8888' : '#aaa' }}>{name}</span>
+            <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <div style={{ width: 8, height: 8, borderRadius: '50%', background: conflict === i ? '#ff4444' : laneColors[i], flexShrink: 0, transition: 'background 0.2s' }} />
+                <span style={{ fontFamily: 'Arial', fontSize: 10, color: conflict === i ? '#ff8888' : '#777' }}>{name}</span>
               </div>
               <button onClick={() => setListening(listening === i ? null : i)}
-                style={{ fontFamily: 'monospace', fontSize: 13, fontWeight: 'bold', minWidth: 56, padding: '6px 12px', borderRadius: 5, background: listening === i ? 'rgba(255,255,255,0.12)' : '#111', border: `1.5px solid ${listening === i ? '#fff' : '#333'}`, color: listening === i ? '#fff' : '#ccc', animation: listening === i ? 'pulse 0.9s ease-in-out infinite' : 'none' }}>
-                {listening === i ? '...' : label(keys[i])}
+                style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 'bold', minWidth: 50, padding: '5px 10px', borderRadius: 4, background: listening === i ? 'rgba(255,255,255,0.1)' : '#111', border: `1.5px solid ${listening === i ? '#fff' : '#222'}`, color: listening === i ? '#fff' : '#bbb', animation: listening === i ? 'pulse 0.9s ease-in-out infinite' : 'none', cursor: 'pointer' }}>
+                {listening === i ? '...' : labelKey(keys[i])}
               </button>
             </div>
           ))}
-          {conflict !== null && <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#ff6666', letterSpacing: 1 }}>That key is already bound to {LANE_NAMES[conflict]}</div>}
-          {listening !== null && <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#888', letterSpacing: 1 }}>Press any key to bind to {LANE_NAMES[listening]}</div>}
+          {conflict  !== null && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff6666', letterSpacing: 1 }}>Key already bound to {LANE_NAMES[conflict]}</div>}
+          {listening !== null && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#555',   letterSpacing: 1 }}>Press a key to bind {LANE_NAMES[listening]}</div>}
+        </div>
+        <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+          <button onClick={() => { setKeys([...DEFAULT_LANE_KEYS]); setListening(null) }}
+            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '7px 0', flex: 1, borderRadius: 4, background: 'transparent', border: '1px solid #222', color: '#333', cursor: 'pointer' }}>RESET</button>
+          <button onClick={() => onChange({ keybinds: keys })}
+            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '7px 0', flex: 2, borderRadius: 4, background: '#fff', border: 'none', color: '#111', fontWeight: 'bold', cursor: 'pointer' }}>SAVE KEYBINDS</button>
         </div>
         <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0.3)}50%{box-shadow:0 0 0 5px rgba(255,255,255,0)}}`}</style>
+      </div>
+    </div>
+    </>
+  )
+}
 
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-          <button onClick={() => { setKeys([...DEFAULT_LANE_KEYS]); setListening(null) }}
-            style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '7px 14px', borderRadius: 5, background: 'transparent', border: '1px solid #333', color: '#555' }}>RESET</button>
-          <button onClick={() => onSave(keys)}
-            style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '7px 14px', borderRadius: 5, background: '#fff', border: 'none', color: '#111', fontWeight: 'bold' }}>SAVE</button>
+// ─── Leaderboard Modal ────────────────────────────────────────────────────────
+function LeaderboardModal({ onClose }) {
+  const [entries, setEntries] = useState(loadLeaderboard())
+
+  const clearAll = () => {
+    localStorage.removeItem('kronox-leaderboard')
+    setEntries([])
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.88)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#181818', border: '1px solid #2a2a2a', borderRadius: 8, padding: '28px 32px', width: 540, maxHeight: '80vh', display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>HIGH SCORES</span>
+          <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
         </div>
+
+        {entries.length === 0 ? (
+          <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#333', textAlign: 'center', padding: '36px 0' }}>
+            No scores yet — play a song to get on the board!
+          </div>
+        ) : (
+          <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {entries.slice(0, 20).map((e, i) => (
+              <div key={i} style={{
+                display: 'grid', gridTemplateColumns: '32px 30px 1fr 54px 100px',
+                alignItems: 'center', gap: 10, padding: '10px 12px',
+                background: '#111', borderRadius: 6,
+                border: `1px solid ${i === 0 ? '#ffd70022' : '#1a1a1a'}`,
+              }}>
+                <span style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 1, fontWeight: 'bold', color: i === 0 ? '#ffd700' : i === 1 ? '#c0c0c0' : i === 2 ? '#cd7f32' : '#333' }}>#{i + 1}</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 17, fontWeight: 'bold', color: GRADE_COLORS[e.grade] || '#888' }}>{e.grade}</span>
+                <div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#ccc', fontWeight: 'bold' }}>{e.songTitle}</div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', marginTop: 2 }}>{e.date}</div>
+                </div>
+                <span style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', textAlign: 'right' }}>{e.accuracy}%</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 14, fontWeight: 'bold', color: '#fff', textAlign: 'right' }}>{e.score.toLocaleString()}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {entries.length > 0 && (
+          <button onClick={clearAll}
+            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '7px 0', borderRadius: 5, background: 'transparent', border: '1px solid #1e1e1e', color: '#2a2a2a', cursor: 'pointer' }}>
+            CLEAR ALL SCORES
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Countdown Overlay ────────────────────────────────────────────────────────
+function CountdownOverlay({ count }) {
+  if (count === null) return null
+  return (
+    <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.55)', zIndex: 50, pointerEvents: 'none' }}>
+      <style>{`
+        @keyframes countPop {
+          0%   { transform: scale(1.7); opacity: 0 }
+          18%  { transform: scale(1.0); opacity: 1 }
+          72%  { transform: scale(1.0); opacity: 1 }
+          100% { transform: scale(0.85); opacity: 0 }
+        }
+      `}</style>
+      <div key={count} style={{
+        fontFamily: 'Arial',
+        fontSize: count === 'GO' ? 44 : 92,
+        fontWeight: 'bold',
+        color: count === 'GO' ? '#66ff99' : '#ffffff',
+        letterSpacing: count === 'GO' ? 16 : 0,
+        animation: 'countPop 0.85s ease-out forwards',
+        textShadow: count === 'GO' ? '0 0 48px #66ff9966' : '0 0 32px rgba(255,255,255,0.15)',
+      }}>{count}</div>
+    </div>
+  )
+}
+
+// ─── Publish Modal ────────────────────────────────────────────────────────────
+function PublishModal({ config, onClose }) {
+  const [status,    setStatus]    = useState('idle') // idle | publishing | success | error
+  const [errMsg,    setErrMsg]    = useState('')
+  const [editTitle, setEditTitle] = useState(config.songTitle || '')
+
+  const handlePublish = async () => {
+    if (!editTitle.trim()) return
+    setStatus('publishing'); setErrMsg('')
+    try {
+      const { publishChart } = await import('./supabase.js')
+      const dur = config.audioRef?.current?.duration || 0
+      await publishChart({
+        audioFile:   config.songFile,
+        songTitle:   editTitle.trim(),
+        bpm:         config.bpm,
+        subdivision: config.subdivision,
+        speed:       config.speed,
+        chart:       config.chart,
+        creator:     GUEST_ID,
+        duration:    dur,
+      })
+      setStatus('success')
+    } catch (err) {
+      setErrMsg(err.message || 'Failed to publish.')
+      setStatus('error')
+    }
+  }
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{ background: '#181818', border: '1px solid #2a2a2a', borderRadius: 8, padding: '28px 32px', width: 400, display: 'flex', flexDirection: 'column', gap: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>PUBLISH CHART</span>
+          <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+        </div>
+
+        {status === 'success' ? (
+          <div style={{ textAlign: 'center', padding: '20px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 36, color: '#66ff99' }}>✓</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#66ff99', fontWeight: 'bold', letterSpacing: 2 }}>PUBLISHED!</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#555' }}>Your chart is now live in the catalog.</div>
+            <button onClick={onClose}
+              style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '10px 0', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer', marginTop: 8 }}>
+              DONE
+            </button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <FieldLabel>SONG TITLE</FieldLabel>
+              <input value={editTitle} onChange={e => setEditTitle(e.target.value)}
+                disabled={status === 'publishing'}
+                style={{ fontFamily: 'Arial', fontSize: 13, color: '#fff', padding: '10px 12px', borderRadius: 5, background: '#111', border: '1px solid #333', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+                onFocus={e => e.target.style.borderColor = '#555'} onBlur={e => e.target.style.borderColor = '#333'} />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+              {[['BPM', config.bpm], ['SPEED', config.speed + 'x'], ['NOTES', (config.chart || []).flat().filter(v => v > 0).length]].map(([l, v]) => (
+                <div key={l} style={{ background: '#111', borderRadius: 5, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                  <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#444', letterSpacing: 2 }}>{l}</span>
+                  <span style={{ fontFamily: 'Arial', fontSize: 15, color: '#fff', fontWeight: 'bold' }}>{v}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ padding: '10px 14px', background: '#111', borderRadius: 5, border: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', letterSpacing: 1 }}>PUBLISHING AS</span>
+              <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#777', fontWeight: 'bold' }}>{GUEST_ID}</span>
+            </div>
+
+            {errMsg && <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#ff6666', lineHeight: 1.6 }}>{errMsg}</div>}
+
+            <button onClick={handlePublish}
+              disabled={status === 'publishing' || !editTitle.trim()}
+              style={{
+                fontFamily: 'Arial', fontSize: 10, letterSpacing: 2, padding: '13px 0', borderRadius: 5,
+                background: status === 'publishing' ? '#1e1e1e' : '#fff',
+                color: status === 'publishing' ? '#444' : '#111',
+                border: 'none', fontWeight: 'bold',
+                cursor: status === 'publishing' ? 'wait' : 'pointer',
+                transition: 'all 0.18s',
+              }}>
+              {status === 'publishing' ? 'UPLOADING...' : '↑  PUBLISH TO CATALOG'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Catalog Panel ────────────────────────────────────────────────────────────
+function CatalogPanel({ onBack, onPlay }) {
+  const [songs,   setSongs]   = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+  const [search,  setSearch]  = useState('')
+  const [sortBy,  setSortBy]  = useState('newest')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true); setError('')
+    import('./supabase.js')
+      .then(({ fetchCatalog }) => fetchCatalog({ sortBy }))
+      .then(data  => { if (!cancelled) { setSongs(data);  setLoading(false) } })
+      .catch(err  => { if (!cancelled) { setError(err.message || 'Could not load catalog.'); setLoading(false) } })
+    return () => { cancelled = true }
+  }, [sortBy])
+
+  const filtered = songs.filter(s =>
+    !search ||
+    (s.title   || '').toLowerCase().includes(search.toLowerCase()) ||
+    (s.creator || '').toLowerCase().includes(search.toLowerCase())
+  )
+
+  const fmtDur = sec => sec
+    ? `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
+    : '--:--'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#141414' }}>
+
+      {/* Header */}
+      <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: 14 }}>
+        <TitleBarBtn onClick={onBack}>← BACK</TitleBarBtn>
+        <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>SONG CATALOG</span>
+        <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#333', marginLeft: 'auto' }}>{GUEST_ID}</span>
+      </div>
+
+      {/* Controls */}
+      <div style={{ padding: '10px 20px', display: 'flex', gap: 10, alignItems: 'center', borderBottom: '1px solid #1a1a1a' }}>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="Search songs or creators..."
+          style={{ flex: 1, fontFamily: 'Arial', fontSize: 12, color: '#fff', padding: '9px 12px', borderRadius: 5, background: '#111', border: '1px solid #2a2a2a', outline: 'none' }}
+          onFocus={e => e.target.style.borderColor = '#444'}
+          onBlur={e => e.target.style.borderColor = '#2a2a2a'} />
+        {[['newest', 'NEWEST'], ['plays', 'POPULAR']].map(([val, lbl]) => (
+          <button key={val} onClick={() => setSortBy(val)}
+            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${sortBy === val ? '#444' : '#222'}`, background: sortBy === val ? '#222' : 'transparent', color: sortBy === val ? '#fff' : '#444', cursor: 'pointer', transition: 'all 0.12s' }}>
+            {lbl}
+          </button>
+        ))}
+      </div>
+
+      {/* Song list */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {loading && (
+          <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#444', textAlign: 'center', padding: '48px 0' }}>Loading...</div>
+        )}
+        {error && (
+          <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#ff6666', textAlign: 'center', padding: '40px 24px', lineHeight: 1.8 }}>
+            {error}
+            <br />
+            <span style={{ color: '#333', fontSize: 9 }}>Add your Supabase config to a .env file — see .env.example</span>
+          </div>
+        )}
+        {!loading && !error && filtered.length === 0 && (
+          <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#333', textAlign: 'center', padding: '48px 0' }}>
+            {search ? 'No songs match your search.' : 'No songs published yet. Be the first!'}
+          </div>
+        )}
+
+        {filtered.map(song => (
+          <div key={song.id}
+            style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#111', borderRadius: 6, border: '1px solid #1a1a1a', transition: 'border-color 0.12s' }}
+            onMouseEnter={e => e.currentTarget.style.borderColor = '#2a2a2a'}
+            onMouseLeave={e => e.currentTarget.style.borderColor = '#1a1a1a'}>
+            <div>
+              <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#fff', fontWeight: 'bold', marginBottom: 5 }}>{song.title}</div>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
+                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#555' }}>{song.creator}</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{song.bpm} BPM</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{fmtDur(song.duration)}</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
+                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{(song.plays || 0).toLocaleString()} plays</span>
+              </div>
+            </div>
+            <button onClick={() => onPlay(song)}
+              style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer', flexShrink: 0 }}>
+              PLAY
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   )
 }
 
 // ─── SetupPanel ───────────────────────────────────────────────────────────────
-function SetupPanel({ onStart, keybinds }) {
-  const [songFile, setSongFile]     = useState(null)
-  const [previewPos, setPreviewPos] = useState(0)
-  const [isPlaying, setIsPlaying]   = useState(false)
+function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPublish }) {
+  const activeLaneColors = (Array.isArray(savedLaneColors) && savedLaneColors.length === 4) ? savedLaneColors : LANE_COLORS
+  const [songFile,    setSongFile]    = useState(null)
+  const [previewPos,  setPreviewPos]  = useState(0)
+  const [isPlaying,   setIsPlaying]   = useState(false)
   const audioRef = useRef(null)
 
   const saved = loadSettings()
@@ -126,7 +528,7 @@ function SetupPanel({ onStart, keybinds }) {
   const saveSettings = useCallback((overrides = {}) => {
     localStorage.setItem('kronox-settings', JSON.stringify({
       songTitle, speed, bpm, beats, subdivision, chart,
-      audioFileName: saved.audioFileName, ...overrides
+      audioFileName: saved.audioFileName, ...overrides,
     }))
   }, [songTitle, speed, bpm, beats, subdivision, chart, saved.audioFileName])
 
@@ -140,7 +542,7 @@ function SetupPanel({ onStart, keybinds }) {
         r.onsuccess = () => { if (r.result) { setSongFile(r.result); setupAudio(r.result) } }
       }
     }
-  }, [])
+  }, []) // eslint-disable-line
 
   const setupAudio = file => {
     if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = '' }
@@ -165,7 +567,6 @@ function SetupPanel({ onStart, keybinds }) {
       setChart(prev => { const n = prev.map(r => [...r]); n[b][l] = n[b][l] ? 0 : 1; saveSettings({ chart: n }); return n })
     } else { setHoldStart({ b, l }) }
   }
-
   const endHold = bEnd => {
     if (!holdStart) return
     const { b: bStart, l } = holdStart
@@ -211,9 +612,41 @@ function SetupPanel({ onStart, keybinds }) {
     else audioRef.current.pause()
   }
 
-  // ── Record mode ──────────────────────────────────────────────────────────
+  // ── Export / Import ───────────────────────────────────────────────────────
+  const exportChart = () => {
+    const data = { title: songTitle, bpm, speed, subdivision, beats, chart }
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = `${songTitle.replace(/[^a-z0-9]/gi, '_')}.kronox.json`
+    a.click()
+    URL.revokeObjectURL(a.href)
+  }
+  const importInputRef = useRef(null)
+  const importChart = e => {
+    const f = e.target.files[0]; if (!f) return
+    const reader = new FileReader()
+    reader.onload = ev => {
+      try {
+        const data = JSON.parse(ev.target.result)
+        if (!data.chart || !Array.isArray(data.chart)) throw new Error('bad')
+        if (data.title)       setSongTitle(data.title)
+        if (data.bpm)         setBpm(Number(data.bpm))
+        if (data.speed)       setSpeed(Number(data.speed))
+        if (data.subdivision) setSubdivision(Number(data.subdivision))
+        if (data.beats)       setBeats(Number(data.beats))
+        setChart(data.chart)
+        saveSettings({ chart: data.chart, songTitle: data.title, bpm: Number(data.bpm), speed: Number(data.speed), subdivision: Number(data.subdivision), beats: Number(data.beats) })
+      } catch { alert('Invalid .kronox.json file') }
+    }
+    reader.readAsText(f)
+    e.target.value = ''
+  }
+
+  // ── Record mode ───────────────────────────────────────────────────────────
   const HOLD_THRESHOLD_MS = 200
-  const [isRecording, setIsRecording] = useState(false)
+  const [isRecording,     setIsRecording]     = useState(false)
+  const [recordCountdown, setRecordCountdown] = useState(null)
   const recordChartRef   = useRef(null)
   const [recordChart, setRecordChart] = useState(null)
   const recordKeyDownRef = useRef({})
@@ -223,9 +656,24 @@ function SetupPanel({ onStart, keybinds }) {
     audioRef.current.currentTime = 0
     recordChartRef.current = buildChart(beats * subdivision)
     recordKeyDownRef.current = {}
-    setRecordChart(null); setIsRecording(true)
-    audioRef.current.play().catch(() => {})
+    setRecordChart(null)
+    setRecordCountdown(3)
   }
+
+  // Countdown: 3 → 2 → 1 → null → start recording
+  useEffect(() => {
+    if (recordCountdown === null) return
+    if (recordCountdown > 1) {
+      const t = setTimeout(() => setRecordCountdown(c => c - 1), 800)
+      return () => clearTimeout(t)
+    }
+    const t = setTimeout(() => {
+      setRecordCountdown(null)
+      setIsRecording(true)
+      audioRef.current?.play().catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+  }, [recordCountdown])
   const stopRecording = useCallback(() => {
     setIsRecording(false); audioRef.current?.pause()
     if (recordChartRef.current) setRecordChart(recordChartRef.current)
@@ -265,7 +713,7 @@ function SetupPanel({ onStart, keybinds }) {
     }
   }, [isRecording, bpm, subdivision, keybinds, stopRecording])
 
-  const applyRecordedChart = () => { if (!recordChart) return; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
+  const applyRecordedChart   = () => { if (!recordChart) return; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
   const discardRecordedChart = () => setRecordChart(null)
 
   const keyLabel = k => {
@@ -288,7 +736,9 @@ function SetupPanel({ onStart, keybinds }) {
           <FieldLabel>SONG FILE</FieldLabel>
           <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 6, cursor: 'pointer', background: '#1a1a1a', border: `2px dashed ${songFile ? '#66ff99' : '#333'}`, transition: 'all 0.2s' }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: songFile ? '#66ff99' : '#333', flexShrink: 0 }} />
-            <span style={{ fontFamily: 'Arial', fontSize: 14, color: songFile ? '#fff' : '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{songFile ? songFile.name : 'Click to upload MP3/OGG/WAV'}</span>
+            <span style={{ fontFamily: 'Arial', fontSize: 14, color: songFile ? '#fff' : '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {songFile ? songFile.name : 'Click to upload MP3/OGG/WAV'}
+            </span>
             <input type="file" accept="audio/*" onChange={handleFile} style={{ position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer' }} />
           </label>
         </div>
@@ -304,10 +754,12 @@ function SetupPanel({ onStart, keybinds }) {
       {songFile && (
         <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <button onClick={playPreview} style={{ fontFamily: 'Arial', fontSize: 12, padding: '6px 14px', background: isPlaying ? '#444' : '#ff4d8f', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 'bold' }}>
+            <button onClick={playPreview} style={{ fontFamily: 'Arial', fontSize: 12, padding: '6px 14px', background: isPlaying ? '#444' : '#ff4d8f', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 'bold', cursor: 'pointer' }}>
               {isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
             </button>
-            <span style={{ fontFamily: 'Arial', fontSize: 12, color: '#888' }}>{Math.floor(previewPos)}s / {audioRef.current ? Math.floor(audioRef.current.duration || 0) : 0}s</span>
+            <span style={{ fontFamily: 'Arial', fontSize: 12, color: '#888' }}>
+              {Math.floor(previewPos)}s / {audioRef.current ? Math.floor(audioRef.current.duration || 0) : 0}s
+            </span>
           </div>
           <div style={{ height: 4, background: '#222', borderRadius: 2, overflow: 'hidden', cursor: 'pointer' }}
             onClick={e => { if (!audioRef.current) return; const r = e.currentTarget.getBoundingClientRect(); audioRef.current.currentTime = ((e.clientX - r.left) / r.width) * (audioRef.current.duration || 0) }}>
@@ -329,7 +781,7 @@ function SetupPanel({ onStart, keybinds }) {
       <div style={{ display: 'flex', gap: 0, borderBottom: '1px solid #222' }}>
         {['chart', 'record'].map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
-            style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '8px 16px', background: 'transparent', border: 'none', color: activeTab === tab ? '#fff' : '#444', borderBottom: activeTab === tab ? '2px solid #fff' : '2px solid transparent', marginBottom: -1, transition: 'all 0.15s' }}>
+            style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '8px 16px', background: 'transparent', border: 'none', color: activeTab === tab ? '#fff' : '#444', borderBottom: activeTab === tab ? '2px solid #fff' : '2px solid transparent', marginBottom: -1, transition: 'all 0.15s', cursor: 'pointer' }}>
             {tab === 'chart' ? 'CHART EDITOR' : '● RECORD MODE'}
           </button>
         ))}
@@ -377,7 +829,7 @@ function SetupPanel({ onStart, keybinds }) {
                           const isHoldHead = on > 1, isHoldTail = on === -1, isActive = on !== 0
                           return <button key={l}
                             onMouseDown={() => toggleCell(rowIdx, l)} onMouseUp={() => holdMode && endHold(rowIdx)}
-                            style={{ height: isBeatStart ? 20 : 14, borderRadius: isHoldTail ? 2 : 3, background: isHoldHead ? LANE_COLORS[l] + '55' : isHoldTail ? LANE_COLORS[l] + '22' : isActive ? 'rgba(255,255,255,0.18)' : isMeasureStart ? '#161616' : '#111', border: `1px solid ${isHoldHead ? LANE_COLORS[l] + '99' : isHoldTail ? LANE_COLORS[l] + '44' : isActive ? 'rgba(255,255,255,0.2)' : isBeatStart ? '#2a2a2a' : '#1a1a1a'}`, transition: 'all 0.08s' }} />
+                            style={{ height: isBeatStart ? 20 : 14, borderRadius: isHoldTail ? 2 : 3, background: isHoldHead ? LANE_COLORS[l] + '55' : isHoldTail ? LANE_COLORS[l] + '22' : isActive ? 'rgba(255,255,255,0.18)' : isMeasureStart ? '#161616' : '#111', border: `1px solid ${isHoldHead ? LANE_COLORS[l] + '99' : isHoldTail ? LANE_COLORS[l] + '44' : isActive ? 'rgba(255,255,255,0.2)' : isBeatStart ? '#2a2a2a' : '#1a1a1a'}`, transition: 'all 0.08s', cursor: 'pointer' }} />
                         })}
                       </div>
                     )
@@ -398,19 +850,25 @@ function SetupPanel({ onStart, keybinds }) {
             <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
               {keybinds.map((k, i) => (
                 <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
-                  <div style={{ width: 32, height: 32, borderRadius: '50%', border: `1.5px solid ${LANE_COLORS[i]}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: LANE_COLORS[i] + '11' }}>
-                    <span style={{ fontFamily: 'Arial', fontSize: 9, color: LANE_COLORS[i] }}>{keyLabel(k)}</span>
+                  <div style={{ width: 32, height: 32, borderRadius: '50%', border: `1.5px solid ${activeLaneColors[i]}55`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: activeLaneColors[i] + '11' }}>
+                    <span style={{ fontFamily: 'Arial', fontSize: 9, color: activeLaneColors[i] }}>{keyLabel(k)}</span>
                   </div>
                   <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#444', letterSpacing: 1 }}>{LANE_NAMES[i]}</span>
                 </div>
               ))}
             </div>
           </div>
-          {!isRecording && !recordChart && (
+          {!isRecording && !recordChart && recordCountdown === null && (
             <button onClick={startRecording} disabled={!songFile}
               style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: songFile ? '#ff4d8f' : '#1a1a1a', color: songFile ? '#fff' : '#333', border: 'none', transition: 'all 0.2s' }}>
               {songFile ? '● START RECORDING' : '⚠ UPLOAD A SONG FIRST'}
             </button>
+          )}
+          {recordCountdown !== null && (
+            <div style={{ position: 'relative', border: '1px solid #ff4d8f33', borderRadius: 6, overflow: 'hidden', height: 120, background: '#1a0a10', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff4d8f88', letterSpacing: 3, position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center' }}>GET READY</span>
+              <CountdownOverlay count={recordCountdown} />
+            </div>
           )}
           {isRecording && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
@@ -422,8 +880,8 @@ function SetupPanel({ onStart, keybinds }) {
                   <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#888', marginTop: 2 }}>{Math.floor(previewPos)}s — tap or hold {keybinds.map(k => keyLabel(k)).join(', ')}</div>
                 </div>
               </div>
-              <LiveKeyDisplay keys={keybinds} keyLabels={keybinds.map(k => keyLabel(k))} names={LANE_NAMES} colors={LANE_COLORS} />
-              <button onClick={stopRecording} style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '12px 0', borderRadius: 6, background: '#2a2a2a', color: '#fff', border: '1px solid #3a3a3a' }}>■ STOP RECORDING</button>
+              <LiveKeyDisplay keys={keybinds} keyLabels={keybinds.map(k => keyLabel(k))} names={LANE_NAMES} colors={activeLaneColors} />
+              <button onClick={stopRecording} style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '12px 0', borderRadius: 6, background: '#2a2a2a', color: '#fff', border: '1px solid #3a3a3a', cursor: 'pointer' }}>■ STOP RECORDING</button>
             </div>
           )}
           {recordChart && !isRecording && (
@@ -435,21 +893,36 @@ function SetupPanel({ onStart, keybinds }) {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 8 }}>
-                <button onClick={applyRecordedChart} style={{ flex: 1, fontFamily: 'Arial', fontSize: 10, letterSpacing: 1, padding: '12px 0', borderRadius: 6, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold' }}>✓ APPLY</button>
-                <button onClick={startRecording} style={{ flex: 1, fontFamily: 'Arial', fontSize: 10, letterSpacing: 1, padding: '12px 0', borderRadius: 6, background: 'transparent', color: '#fff', border: '1px solid #333' }}>↺ REDO</button>
-                <button onClick={discardRecordedChart} style={{ fontFamily: 'Arial', fontSize: 10, padding: '12px 16px', borderRadius: 6, background: 'transparent', color: '#555', border: '1px solid #222' }}>✕</button>
+                <button onClick={applyRecordedChart}   style={{ flex: 1, fontFamily: 'Arial', fontSize: 10, letterSpacing: 1, padding: '12px 0', borderRadius: 6, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>✓ APPLY</button>
+                <button onClick={startRecording}        style={{ flex: 1, fontFamily: 'Arial', fontSize: 10, letterSpacing: 1, padding: '12px 0', borderRadius: 6, background: 'transparent', color: '#fff', border: '1px solid #333', cursor: 'pointer' }}>↺ REDO</button>
+                <button onClick={discardRecordedChart}  style={{ fontFamily: 'Arial', fontSize: 10, padding: '12px 16px', borderRadius: 6, background: 'transparent', color: '#555', border: '1px solid #222', cursor: 'pointer' }}>✕</button>
               </div>
             </div>
           )}
         </div>
       )}
 
-      <button onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds })} disabled={!songFile}
-        style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 1, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: songFile ? '#66ff99' : '#1a1a1a', color: songFile ? '#111' : '#333', border: songFile ? 'none' : '1px solid #2a2a2a', transition: 'all 0.2s', marginTop: 'auto' }}
-        onMouseEnter={e => { if (songFile) { e.currentTarget.style.background = '#99ffbb'; e.currentTarget.style.transform = 'scale(1.02)' } }}
-        onMouseLeave={e => { if (songFile) { e.currentTarget.style.background = '#66ff99'; e.currentTarget.style.transform = 'scale(1)' } }}>
-        {songFile ? '▶ PLAY' : '⚠ UPLOAD A SONG FIRST'}
-      </button>
+      {/* Bottom action bar */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 'auto', flexWrap: 'wrap', alignItems: 'center' }}>
+        <SmallBtn onClick={exportChart} color="#4d96ff">EXPORT CHART</SmallBtn>
+        <label>
+          <input ref={importInputRef} type="file" accept=".json" onChange={importChart} style={{ display: 'none' }} />
+          <SmallBtn onClick={() => importInputRef.current?.click()} color="#4d96ff">IMPORT CHART</SmallBtn>
+        </label>
+        {songFile && (
+          <SmallBtn onClick={() => onOpenPublish({ songFile, songTitle, bpm, speed, subdivision, beats, chart, audioRef })} color="#ffd93d">
+            ↑ PUBLISH
+          </SmallBtn>
+        )}
+        <button
+          onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds })}
+          disabled={!songFile}
+          style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 13, letterSpacing: 1, fontWeight: 'bold', padding: '12px 28px', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: songFile ? '#66ff99' : '#1a1a1a', color: songFile ? '#111' : '#333', border: songFile ? 'none' : '1px solid #2a2a2a', transition: 'all 0.2s' }}
+          onMouseEnter={e => { if (songFile) { e.currentTarget.style.background = '#99ffbb'; e.currentTarget.style.transform = 'scale(1.02)' } }}
+          onMouseLeave={e => { if (songFile) { e.currentTarget.style.background = '#66ff99'; e.currentTarget.style.transform = 'scale(1)' } }}>
+          {songFile ? '▶ PLAY' : '⚠ UPLOAD A SONG FIRST'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -478,9 +951,11 @@ function LiveKeyDisplay({ keys, keyLabels, names, colors }) {
 
 // ─── GameView ─────────────────────────────────────────────────────────────────
 function GameView({ config, onStop }) {
-  const stageRef = useRef(null)
-  const audioRef = useRef(null)
-  const rafRef   = useRef(null)
+  const stageRef    = useRef(null)
+  const audioRef    = useRef(null)
+  const rafRef      = useRef(null)
+  const sfxCtxRef   = useRef(null)
+  const sfxBufRef   = useRef(null)
   const stateRef = useRef({
     activeNotes: [], score: 0, combo: 0, health: 80,
     paused: false, completedBeats: new Set(),
@@ -488,13 +963,17 @@ function GameView({ config, onStop }) {
     heldNotes: {},
   })
 
-  const keybinds = config.keybinds || DEFAULT_LANE_KEYS
+  // Countdown: 3 → 2 → 1 → 'GO' → null (game starts)
+  const [countdown,    setCountdown]    = useState(3)
+  const gameStartedRef                  = useRef(false)
 
-  // Lane width constants — four lanes, each 90px wide, 8px gap between
-  const LANE_W    = 90
-  const LANE_GAP  = 8
-  const NOTE_SIZE = 74  // flat white circle diameter
-  const TOTAL_W   = LANE_W * 4 + LANE_GAP * 3  // 360 + 24 = 384
+  const keybinds   = config.keybinds   || DEFAULT_LANE_KEYS
+  const laneColors = config.laneColors || LANE_COLORS
+
+  const LANE_W          = 90
+  const LANE_GAP        = 8
+  const NOTE_SIZE       = 74
+  const TOTAL_W         = LANE_W * 4 + LANE_GAP * 3
   const RECEPTOR_BOTTOM = 70
 
   const [hud,             setHud]             = useState({ score: 0, combo: 0, health: 80 })
@@ -502,6 +981,49 @@ function GameView({ config, onStop }) {
   const [receptorPressed, setReceptorPressed] = useState([false, false, false, false])
   const [paused,          setPaused]          = useState(false)
   const [comboFlash,      setComboFlash]      = useState(false)
+
+  // ── Hit SFX via Web Audio (allows gain > 1 to be louder than music) ───────
+  useEffect(() => {
+    const ctx = new AudioContext()
+    sfxCtxRef.current = ctx
+    fetch('/hit.mp3')
+      .then(r => r.arrayBuffer())
+      .then(buf => ctx.decodeAudioData(buf))
+      .then(decoded => { sfxBufRef.current = decoded })
+      .catch(() => {})
+    return () => { ctx.close() }
+  }, [])
+
+  const playHitSfx = useCallback(() => {
+    const ctx = sfxCtxRef.current
+    const buf = sfxBufRef.current
+    if (!ctx || !buf) return
+    const src  = ctx.createBufferSource()
+    src.buffer = buf
+    const gain = ctx.createGain()
+    gain.gain.value = (config.sfxVolume ?? 0.7) * 5
+    src.connect(gain)
+    gain.connect(ctx.destination)
+    src.start()
+  }, [])
+
+  // ── Countdown timer ───────────────────────────────────────────────────────
+  useEffect(() => {
+    if (typeof countdown === 'number' && countdown > 1) {
+      const t = setTimeout(() => setCountdown(c => c - 1), 800)
+      return () => clearTimeout(t)
+    } else if (countdown === 1) {
+      const t = setTimeout(() => setCountdown('GO'), 800)
+      return () => clearTimeout(t)
+    } else if (countdown === 'GO') {
+      const t = setTimeout(() => {
+        setCountdown(null)
+        gameStartedRef.current = true
+        audioRef.current?.play().catch(() => {})
+      }, 600)
+      return () => clearTimeout(t)
+    }
+  }, [countdown])
 
   const showJudge = useCallback((text, color) => {
     setJudgment(j => ({ text, color, visible: true, key: j.key + 1 }))
@@ -514,14 +1036,12 @@ function GameView({ config, onStop }) {
     if (s.combo > 0) { setComboFlash(true); setTimeout(() => setComboFlash(false), 120) }
   }, [])
 
-  // Lane element helper — uses explicit pixel offsets to avoid any measurement
-  const getLaneEl = useCallback(lane => stageRef.current?.querySelectorAll('.fnf-lane')?.[lane], [])
+  const getLaneEl  = useCallback(lane => stageRef.current?.querySelectorAll('.fnf-lane')?.[lane], [])
 
-  // Flash lane white on hit
   const flashLane = useCallback(laneEl => {
     if (!laneEl) return
     const flash = document.createElement('div')
-    flash.style.cssText = `position:absolute;inset:0;background:#ffffff;opacity:0.18;pointer-events:none;z-index:5;transition:opacity 0.25s;`
+    flash.style.cssText = `position:absolute;inset:0;background:#ffffff;opacity:0.13;pointer-events:none;z-index:5;transition:opacity 0.25s;`
     laneEl.appendChild(flash)
     requestAnimationFrame(() => requestAnimationFrame(() => { flash.style.opacity = '0' }))
     setTimeout(() => flash.remove(), 300)
@@ -533,7 +1053,11 @@ function GameView({ config, onStop }) {
     stageRef.current?.querySelectorAll('.fnf-note,.fnf-hold-trail').forEach(n => n.remove())
     const s = stateRef.current
     const accuracy = s.totalHits > 0 ? Math.round(((s.perfect * 100 + s.good * 90 + s.bad * 70) / (s.totalHits * 100)) * 100) : 0
-    onStop('complete', { score: s.score, perfect: s.perfect, good: s.good, bad: s.bad, miss: s.miss, totalHits: s.totalHits, accuracy, duration: audioRef.current?.duration || 0, songTitle: config.songTitle })
+    onStop('complete', {
+      score: s.score, perfect: s.perfect, good: s.good, bad: s.bad,
+      miss: s.miss, totalHits: s.totalHits, accuracy,
+      duration: audioRef.current?.duration || 0, songTitle: config.songTitle,
+    })
   }, [onStop, config.songTitle])
 
   const dieGame = useCallback(() => {
@@ -591,6 +1115,7 @@ function GameView({ config, onStop }) {
       s.heldNotes[lane] = { note: closest, startMs: nowMs, holdDurationMs: closest.holdDurationMs }
       closest.el?.remove(); closest.el = null
       flashLane(laneEl)
+      playHitSfx()
       return
     }
 
@@ -600,6 +1125,7 @@ function GameView({ config, onStop }) {
     s.activeNotes = s.activeNotes.filter(n => !n.hit)
     s.combo++; s.totalHits++
     flashLane(laneEl)
+    playHitSfx()
 
     let pts, text, color
     if (minDist < 15)       { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++ }
@@ -610,35 +1136,35 @@ function GameView({ config, onStop }) {
     s.score += pts * Math.max(1, Math.floor(s.combo / 10))
     s.health = Math.min(100, s.health + 3)
     updateHud(); showJudge(text, color)
-  }, [showJudge, updateHud, getLaneEl, flashLane])
+  }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx])
 
   const togglePause = useCallback(() => {
     const s = stateRef.current; s.paused = !s.paused; setPaused(s.paused)
     if (s.paused) audioRef.current?.pause()
-    else audioRef.current?.play().catch(() => {})
+    else          audioRef.current?.play().catch(() => {})
   }, [])
 
   useEffect(() => {
-    const url = URL.createObjectURL(config.songFile)
+    // Set up audio — countdown effect will trigger play
+    const url   = config.audioUrl || URL.createObjectURL(config.songFile)
     const audio = new Audio(url)
+    audio.volume = config.musicVolume ?? 1.0
     audioRef.current = audio
     audio.onended = stopGame
-    audio.play().catch(() => {})
 
     const subdivision = config.subdivision || 1
-    const subdivMs = (60000 / config.bpm) / subdivision
-    const subdivSec = subdivMs / 1000
-    const s = stateRef.current
+    const subdivMs    = (60000 / config.bpm) / subdivision
+    const subdivSec   = subdivMs / 1000
+    const s           = stateRef.current
     s.activeNotes = []; s.score = 0; s.combo = 0; s.health = 80
     s.completedBeats = new Set(); s.heldNotes = {}
 
     const LOOKAHEAD_MS = 2200
-    const laneXOffsets = [0, 1, 2, 3].map(i => i * (LANE_W + LANE_GAP))
 
     const loop = () => {
-      if (!s.paused) {
-        const nowSec = audio.currentTime
-        const nowMs  = nowSec * 1000
+      if (!s.paused && gameStartedRef.current) {
+        const nowSec    = audio.currentTime
+        const nowMs     = nowSec * 1000
         const futureIdx = Math.floor((nowSec + LOOKAHEAD_MS / 1000) / subdivSec)
         const laneEls   = stageRef.current?.querySelectorAll('.fnf-lane')
 
@@ -650,8 +1176,8 @@ function GameView({ config, onStop }) {
             if (cell > 0 && !s.completedBeats.has(key) && !s.activeNotes.find(n => n.beat === b && n.lane === l)) {
               s.activeNotes.push({
                 beat: b, lane: l,
-                hitTimeMs:       b * subdivMs,
-                holdDurationMs:  cell > 1 ? (cell - 1) * subdivMs : 0,
+                hitTimeMs:      b * subdivMs,
+                holdDurationMs: cell > 1 ? (cell - 1) * subdivMs : 0,
                 hit: false, el: null, trailEl: null, yFromBottom: 0,
               })
             }
@@ -665,8 +1191,9 @@ function GameView({ config, onStop }) {
           const yFromBottom = RECEPTOR_BOTTOM + timeToHitMs * config.speed * 0.35
           note.yFromBottom  = yFromBottom
           const isBeingHeld = !!s.heldNotes[note.lane] && s.heldNotes[note.lane].note === note
+          const noteColor   = laneColors[note.lane]
 
-          // ── Note head: flat white circle, no glow, no gradient ──
+          // ── Note head: colored circle ─────────────────────────────────────
           if (!isBeingHeld) {
             if (!note.el) {
               const el = document.createElement('div')
@@ -678,9 +1205,10 @@ function GameView({ config, onStop }) {
                 width:${NOTE_SIZE}px;
                 height:${NOTE_SIZE}px;
                 border-radius:50%;
-                background:#ffffff;
+                background:${noteColor};
+                box-shadow:0 0 10px ${noteColor}55;
                 pointer-events:none;
-                z-index:2;
+                z-index:3;
               `
               laneEls?.[note.lane]?.appendChild(el)
               note.el = el
@@ -690,7 +1218,7 @@ function GameView({ config, onStop }) {
             if (note.el) { note.el.remove(); note.el = null }
           }
 
-          // ── Hold trail: white semi-transparent bar ──
+          // ── Hold trail: full-width pill that extends below the note head ──
           if (note.holdDurationMs > 0) {
             if (!note.trailEl) {
               const tr = document.createElement('div')
@@ -699,9 +1227,9 @@ function GameView({ config, onStop }) {
                 position:absolute;
                 left:50%;
                 transform:translateX(-50%);
-                width:${Math.round(NOTE_SIZE * 0.4)}px;
-                border-radius:${Math.round(NOTE_SIZE * 0.2)}px ${Math.round(NOTE_SIZE * 0.2)}px 0 0;
-                background:rgba(255,255,255,0.35);
+                width:${NOTE_SIZE}px;
+                border-radius:${NOTE_SIZE / 2}px;
+                background:${noteColor}55;
                 pointer-events:none;
                 z-index:1;
               `
@@ -712,13 +1240,13 @@ function GameView({ config, onStop }) {
             if (isBeingHeld) {
               const held      = s.heldNotes[note.lane]
               const remaining = Math.max(0, held.holdDurationMs - (nowMs - held.startMs))
-              const h         = remaining * config.speed * 0.35
+              const h         = Math.max(NOTE_SIZE, remaining * config.speed * 0.35)
               note.trailEl.style.bottom = RECEPTOR_BOTTOM + 'px'
               note.trailEl.style.height = h + 'px'
               if (remaining <= 0) releaseHold(note.lane)
             } else {
-              const trailH = note.holdDurationMs * config.speed * 0.35
-              note.trailEl.style.bottom = (yFromBottom + NOTE_SIZE / 2) + 'px'
+              const trailH = Math.max(NOTE_SIZE, note.holdDurationMs * config.speed * 0.35)
+              note.trailEl.style.bottom = yFromBottom + 'px'
               note.trailEl.style.height = trailH + 'px'
             }
           }
@@ -751,7 +1279,7 @@ function GameView({ config, onStop }) {
     return () => {
       cancelAnimationFrame(rafRef.current)
       audio.onended = null; audio.pause()
-      URL.revokeObjectURL(url)
+      if (!config.audioUrl) URL.revokeObjectURL(url)
       window.removeEventListener('keydown', onKey)
       window.removeEventListener('keyup', onKey)
     }
@@ -781,36 +1309,29 @@ function GameView({ config, onStop }) {
       `}</style>
 
       {/* Stage */}
-      <div ref={stageRef} style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#0a0a0a' }}>
+      <div ref={stageRef} style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#080808' }}>
 
-        {/* Highway — 4 lanes with gaps */}
+        {/* Highway */}
         <div style={{
           position: 'absolute', top: 0, bottom: 0,
           left: '50%', transform: 'translateX(-50%)',
-          width: TOTAL_W,
-          display: 'flex', gap: LANE_GAP,
+          width: TOTAL_W, display: 'flex', gap: LANE_GAP,
         }}>
           {[0, 1, 2, 3].map(l => (
             <div key={l} className="fnf-lane" style={{
-              position: 'relative',
-              width: LANE_W, flexShrink: 0,
-              overflow: 'visible',
-              // Subtle lane background — very faint
-              background: 'rgba(255,255,255,0.012)',
+              position: 'relative', width: LANE_W, flexShrink: 0, overflow: 'visible',
+              background: `${laneColors[l]}07`,
+              borderLeft:  `1px solid ${laneColors[l]}1a`,
+              borderRight: `1px solid ${laneColors[l]}1a`,
             }}>
-              {/* Receptor: white ring, filled white when pressed */}
+              {/* Receptor */}
               <div style={{
-                position: 'absolute',
-                bottom: RECEPTOR_BOTTOM,
-                left: '50%',
+                position: 'absolute', bottom: RECEPTOR_BOTTOM, left: '50%',
                 transform: receptorPressed[l] ? 'translateX(-50%) scale(0.88)' : 'translateX(-50%) scale(1)',
-                width: NOTE_SIZE, height: NOTE_SIZE,
-                borderRadius: '50%',
-                border: `2px solid ${receptorPressed[l] ? '#ffffff' : 'rgba(255,255,255,0.25)'}`,
-                background: receptorPressed[l] ? 'rgba(255,255,255,0.15)' : 'transparent',
-                transition: 'all 0.04s',
-                zIndex: 3,
-                boxSizing: 'border-box',
+                width: NOTE_SIZE, height: NOTE_SIZE, borderRadius: '50%',
+                border: `2px solid ${receptorPressed[l] ? laneColors[l] : laneColors[l] + '44'}`,
+                background: receptorPressed[l] ? laneColors[l] + '20' : 'transparent',
+                transition: 'all 0.04s', zIndex: 3, boxSizing: 'border-box',
               }} />
             </div>
           ))}
@@ -833,10 +1354,8 @@ function GameView({ config, onStop }) {
         <div key={judgment.key} style={{
           position: 'absolute', left: '50%', top: '36%',
           fontFamily: 'Arial', fontSize: 11, letterSpacing: 4, fontWeight: 'bold',
-          color: judgment.color,
-          pointerEvents: 'none', zIndex: 10, whiteSpace: 'nowrap',
-          animation: judgment.visible ? 'judgeAnim 0.5s ease-out forwards' : 'none',
-          opacity: 0,
+          color: judgment.color, pointerEvents: 'none', zIndex: 10, whiteSpace: 'nowrap',
+          animation: judgment.visible ? 'judgeAnim 0.5s ease-out forwards' : 'none', opacity: 0,
         }}>{judgment.text}</div>
 
         {/* Health bar */}
@@ -849,6 +1368,16 @@ function GameView({ config, onStop }) {
             <div style={{ height: '100%', width: `${hud.health}%`, background: hud.health > 50 ? '#ffffff' : hud.health > 25 ? '#ffd93d' : '#ff4466', borderRadius: 999, transition: 'width 0.2s, background 0.4s' }} />
           </div>
         </div>
+
+        {/* Countdown overlay */}
+        <CountdownOverlay count={countdown} />
+
+        {/* Pause overlay */}
+        {paused && (
+          <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.62)', zIndex: 40 }}>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', letterSpacing: 6, fontWeight: 'bold' }}>PAUSED</div>
+          </div>
+        )}
       </div>
 
       {/* Control bar */}
@@ -859,8 +1388,8 @@ function GameView({ config, onStop }) {
           {keybinds.map((k, i) => (
             <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3 }}>
               <span style={{ fontFamily: 'Arial', fontSize: 5, color: '#333', letterSpacing: 1 }}>{LANE_NAMES[i]}</span>
-              <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${receptorPressed[i] ? '#ffffff' : '#333333'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: receptorPressed[i] ? 'rgba(255,255,255,0.15)' : 'transparent', transition: 'all 0.05s' }}>
-                <span style={{ fontFamily: 'Arial', fontSize: 7, color: receptorPressed[i] ? '#ffffff' : '#444' }}>{keyLabel(k)}</span>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', border: `1.5px solid ${receptorPressed[i] ? laneColors[i] : '#333333'}`, display: 'flex', alignItems: 'center', justifyContent: 'center', background: receptorPressed[i] ? laneColors[i] + '22' : 'transparent', transition: 'all 0.05s' }}>
+                <span style={{ fontFamily: 'Arial', fontSize: 7, color: receptorPressed[i] ? laneColors[i] : '#444' }}>{keyLabel(k)}</span>
               </div>
             </div>
           ))}
@@ -874,73 +1403,116 @@ function CtrlBtn({ onClick, children }) {
   const [hov, setHov] = useState(false)
   return (
     <button onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '6px 13px', borderRadius: 5, border: '1px solid #333', background: hov ? '#222' : 'transparent', color: hov ? '#fff' : '#666', transition: 'all 0.12s' }}>
+      style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '6px 13px', borderRadius: 5, border: '1px solid #333', background: hov ? '#222' : 'transparent', color: hov ? '#fff' : '#666', transition: 'all 0.12s', cursor: 'pointer' }}>
       {children}
     </button>
   )
 }
 
 // ─── Results ──────────────────────────────────────────────────────────────────
-function Results({ stats, onExit }) {
+function Results({ stats, onExit, onPlayAgain }) {
   const [fadeOut, setFadeOut] = useState(false)
-  const handleExit = () => { setFadeOut(true); setTimeout(onExit, 400) }
-  const total = stats.totalHits || 1
+  const handleExit      = () => { setFadeOut(true); setTimeout(onExit, 380) }
+  const handlePlayAgain = () => { setFadeOut(true); setTimeout(onPlayAgain, 380) }
 
-  const topCards = [
-    { label: 'PERFECT',  value: stats.perfect,                        sub: `${((stats.perfect / total) * 100).toFixed(0)}%`, color: '#ffffff' },
-    { label: 'GOOD',     value: stats.good,                           sub: `${((stats.good    / total) * 100).toFixed(0)}%`, color: '#aaaaaa' },
-    { label: 'BAD',      value: stats.bad,                            sub: `${((stats.bad     / total) * 100).toFixed(0)}%`, color: '#666666' },
-    { label: 'MISS',     value: stats.miss,                           sub: `${((stats.miss    / total) * 100).toFixed(0)}%`, color: '#ff6666' },
-    { label: 'SCORE',    value: `${(stats.score / 1000).toFixed(1)}k`, sub: 'points',                                        color: '#ffffff' },
-    { label: 'ACCURACY', value: `${stats.accuracy}%`,                  sub: 'overall',                                       color: '#ffd93d' },
-  ]
-  const botCards = [
-    { label: 'TOTAL HITS', value: stats.totalHits },
-    { label: 'DURATION',   value: `${Math.floor(stats.duration)}s` },
-    { label: 'NOTES/SEC',  value: (stats.totalHits / Math.max(stats.duration, 1)).toFixed(1) },
-    { label: 'HIT RATE',   value: `${((stats.totalHits / Math.max(stats.totalHits + stats.miss, 1)) * 100).toFixed(0)}%` },
-    { label: 'AVG TIMING', value: `${(((stats.perfect / total) * 100 + (stats.good / total) * 100) / 2).toFixed(0)}%` },
-    { label: 'RATING',     value: stats.accuracy >= 95 ? 'S+' : stats.accuracy >= 85 ? 'S' : stats.accuracy >= 75 ? 'A' : stats.accuracy >= 65 ? 'B' : 'C' },
+  const grade      = stats.grade || calcGrade(stats.accuracy)
+  const gradeColor = GRADE_COLORS[grade] || '#888'
+  const total      = Math.max(stats.totalHits, 1)
+
+  const judgments = [
+    { label: 'PERFECT', value: stats.perfect, pct: ((stats.perfect / total) * 100).toFixed(0), color: '#ffffff' },
+    { label: 'GOOD',    value: stats.good,    pct: ((stats.good    / total) * 100).toFixed(0), color: '#aaaaaa' },
+    { label: 'BAD',     value: stats.bad,     pct: ((stats.bad     / total) * 100).toFixed(0), color: '#555555' },
+    { label: 'MISS',    value: stats.miss,    pct: ((stats.miss    / total) * 100).toFixed(0), color: '#ff6666' },
   ]
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#0c0c0c', display: 'flex', flexDirection: 'column', opacity: fadeOut ? 0 : 1, transition: 'opacity 0.4s', overflow: 'auto', padding: '24px 28px', gap: 18, color: '#fff', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{
+      position: 'fixed', inset: 0, background: '#0b0b0b',
+      display: 'flex', flexDirection: 'column',
+      opacity: fadeOut ? 0 : 1, transition: 'opacity 0.38s',
+      overflow: 'auto', fontFamily: 'Arial, sans-serif',
+    }}>
       <style>{`
-        @keyframes slideUp { from { transform: translateY(18px); opacity: 0 } to { transform: translateY(0); opacity: 1 } }
-        .rc { background:#141414; border:1px solid #222; border-radius:6px; padding:14px 16px; display:flex; flex-direction:column; gap:5px; }
+        @keyframes slideUp { from { transform:translateY(20px);opacity:0 } to { transform:translateY(0);opacity:1 } }
+        @keyframes gradeIn { 0% { transform:scale(2.2);opacity:0 } 60% { transform:scale(0.92);opacity:1 } 100% { transform:scale(1);opacity:1 } }
       `}</style>
 
-      <div style={{ animation: 'slideUp 0.35s ease-out' }}>
-        <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#333', letterSpacing: 3, marginBottom: 8 }}>RESULTS</div>
-        <h1 style={{ fontSize: 20, fontWeight: 'bold', margin: 0, letterSpacing: 1 }}>SONG COMPLETE</h1>
-        <p style={{ fontSize: 11, color: '#555', margin: '5px 0 0' }}>{stats.songTitle}</p>
+      {/* Top: grade + title */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 36, padding: '40px 52px 28px', borderBottom: '1px solid #141414' }}>
+        <div style={{
+          width: 112, height: 112, borderRadius: 18, flexShrink: 0,
+          border: `2px solid ${gradeColor}33`, background: `${gradeColor}0d`,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          animation: 'gradeIn 0.5s cubic-bezier(0.22,1,0.36,1) forwards',
+        }}>
+          <span style={{ fontFamily: 'Arial', fontSize: 62, fontWeight: 'bold', color: gradeColor, lineHeight: 1 }}>{grade}</span>
+        </div>
+
+        <div style={{ animation: 'slideUp 0.4s ease-out 0.08s both' }}>
+          <div style={{ fontSize: 7, letterSpacing: 3, color: '#333', marginBottom: 8 }}>SONG COMPLETE</div>
+          <div style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', marginBottom: 10 }}>{stats.songTitle}</div>
+          <div style={{ display: 'flex', gap: 28 }}>
+            <ResultStat label="SCORE"    value={stats.score.toLocaleString()} color="#fff" />
+            <ResultStat label="ACCURACY" value={`${stats.accuracy}%`}         color={gradeColor} />
+          </div>
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10 }}>
-        {topCards.map((c, i) => (
-          <div key={c.label} className="rc" style={{ animation: `slideUp 0.4s ease-out ${0.04 * i}s both` }}>
-            <div style={{ fontSize: 7, letterSpacing: 2, color: c.color, fontWeight: 'bold' }}>{c.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 'bold', color: '#fff', lineHeight: 1.1 }}>{c.value}</div>
-            <div style={{ fontSize: 9, color: '#444' }}>{c.sub}</div>
+      {/* Judgment breakdown */}
+      <div style={{ padding: '24px 52px', display: 'flex', flexDirection: 'column', gap: 11, animation: 'slideUp 0.4s ease-out 0.16s both' }}>
+        <div style={{ fontSize: 7, letterSpacing: 3, color: '#333', marginBottom: 2 }}>BREAKDOWN</div>
+        {judgments.map(j => (
+          <div key={j.label} style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+            <span style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, color: j.color, width: 54 }}>{j.label}</span>
+            <div style={{ flex: 1, height: 4, background: '#181818', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${j.pct}%`, background: j.color, borderRadius: 2, transition: 'width 0.7s ease-out' }} />
+            </div>
+            <span style={{ fontFamily: 'Arial', fontSize: 13, fontWeight: 'bold', color: j.color, width: 36, textAlign: 'right' }}>{j.value}</span>
+            <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#333', width: 34, textAlign: 'right' }}>{j.pct}%</span>
           </div>
         ))}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6,1fr)', gap: 10 }}>
-        {botCards.map((c, i) => (
-          <div key={c.label} className="rc" style={{ animation: `slideUp 0.4s ease-out ${0.25 + 0.04 * i}s both` }}>
-            <div style={{ fontSize: 7, letterSpacing: 2, color: '#444', fontWeight: 'bold' }}>{c.label}</div>
-            <div style={{ fontSize: 18, fontWeight: 'bold', color: '#999' }}>{c.value}</div>
+      {/* Secondary stats */}
+      <div style={{ padding: '0 52px 28px', display: 'flex', gap: 10, flexWrap: 'wrap', animation: 'slideUp 0.4s ease-out 0.24s both' }}>
+        {[
+          { label: 'TOTAL HITS', value: stats.totalHits },
+          { label: 'DURATION',   value: `${Math.floor(stats.duration)}s` },
+          { label: 'NOTES/SEC',  value: (stats.totalHits / Math.max(stats.duration, 1)).toFixed(1) },
+          { label: 'HIT RATE',   value: `${((stats.totalHits / Math.max(stats.totalHits + stats.miss, 1)) * 100).toFixed(0)}%` },
+        ].map(s => (
+          <div key={s.label} style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '12px 18px', display: 'flex', flexDirection: 'column', gap: 4 }}>
+            <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 2 }}>{s.label}</span>
+            <span style={{ fontFamily: 'Arial', fontSize: 18, fontWeight: 'bold', color: '#666' }}>{s.value}</span>
           </div>
         ))}
       </div>
 
-      <button onClick={handleExit}
-        style={{ padding: '12px 0', borderRadius: 6, border: '1px solid #222', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', background: '#141414', color: '#fff', transition: 'all 0.2s', animation: 'slideUp 0.4s ease-out 0.55s both' }}
-        onMouseEnter={e => { e.currentTarget.style.background = '#1e1e1e'; e.currentTarget.style.borderColor = '#333' }}
-        onMouseLeave={e => { e.currentTarget.style.background = '#141414'; e.currentTarget.style.borderColor = '#222' }}>
-        BACK TO MAIN
-      </button>
+      {/* Buttons */}
+      <div style={{ display: 'flex', gap: 10, padding: '0 52px', marginTop: 'auto', paddingBottom: 40, animation: 'slideUp 0.4s ease-out 0.3s both' }}>
+        <button onClick={handlePlayAgain}
+          style={{ flex: 1, padding: '13px 0', borderRadius: 6, border: `1px solid ${gradeColor}33`, background: `${gradeColor}0d`, fontSize: 11, letterSpacing: 2, fontWeight: 'bold', color: gradeColor, cursor: 'pointer', transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = gradeColor + '1a' }}
+          onMouseLeave={e => { e.currentTarget.style.background = gradeColor + '0d' }}>
+          ↺  PLAY AGAIN
+        </button>
+        <button onClick={handleExit}
+          style={{ flex: 1, padding: '13px 0', borderRadius: 6, border: '1px solid #222', background: '#141414', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', color: '#fff', cursor: 'pointer', transition: 'all 0.15s' }}
+          onMouseEnter={e => { e.currentTarget.style.background = '#1e1e1e'; e.currentTarget.style.borderColor = '#333' }}
+          onMouseLeave={e => { e.currentTarget.style.background = '#141414'; e.currentTarget.style.borderColor = '#222' }}>
+          BACK TO MENU
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function ResultStat({ label, value, color }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, color: '#444' }}>{label}</span>
+      <span style={{ fontFamily: 'Arial', fontSize: 26, fontWeight: 'bold', color: color || '#fff', lineHeight: 1 }}>{value}</span>
     </div>
   )
 }
@@ -964,7 +1536,7 @@ function SmallBtn({ onClick, children, color = '#555' }) {
   const [hov, setHov] = useState(false)
   return (
     <button onClick={onClick} onMouseEnter={() => setHov(true)} onMouseLeave={() => setHov(false)}
-      style={{ fontFamily: 'Arial', fontSize: 7, padding: '5px 11px', borderRadius: 5, background: hov ? color + '22' : 'transparent', border: `1px solid ${hov ? color : color + '66'}`, color: hov ? color : color + '99', letterSpacing: 2, transition: 'all 0.12s' }}>
+      style={{ fontFamily: 'Arial', fontSize: 7, padding: '5px 11px', borderRadius: 5, background: hov ? color + '22' : 'transparent', border: `1px solid ${hov ? color : color + '66'}`, color: hov ? color : color + '99', letterSpacing: 2, transition: 'all 0.12s', cursor: 'pointer' }}>
       {children}
     </button>
   )
@@ -972,32 +1544,106 @@ function SmallBtn({ onClick, children, color = '#555' }) {
 
 // ─── App ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [screen,       setScreen]       = useState('setup')
-  const [gameConfig,   setGameConfig]   = useState(null)
-  const [gameStats,    setGameStats]    = useState(null)
-  const [showSettings, setShowSettings] = useState(false)
+  const [screen,          setScreen]         = useState('setup')   // setup | game | results | catalog
+  const [gameConfig,      setGameConfig]      = useState(null)
+  const [gameStats,       setGameStats]       = useState(null)
+  const [showSettings,    setShowSettings]    = useState(false)
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [showPublish,     setShowPublish]     = useState(false)
+  const [publishConfig,   setPublishConfig]   = useState(null)
 
   const saved = loadSettings()
-  const [keybinds, setKeybinds] = useState(saved.keybinds?.length === 4 ? saved.keybinds : [...DEFAULT_LANE_KEYS])
+  const [keybinds,    setKeybinds]    = useState(saved.keybinds?.length === 4 ? saved.keybinds : [...DEFAULT_LANE_KEYS])
+  const [laneColors,  setLaneColors]  = useState(Array.isArray(saved.laneColors) && saved.laneColors.length === 4 ? saved.laneColors : [...LANE_COLORS])
+  const [sfxVolume,   setSfxVolume]   = useState(saved.sfxVolume   ?? 0.7)
+  const [musicVolume, setMusicVolume] = useState(saved.musicVolume ?? 1.0)
 
-  const saveKeybinds = keys => {
-    setKeybinds(keys)
-    localStorage.setItem('kronox-settings', JSON.stringify({ ...loadSettings(), keybinds: keys }))
-    setShowSettings(false)
+  const handleSettingsChange = patch => {
+    const next = { ...loadSettings(), ...patch }
+    if (patch.keybinds)    setKeybinds(patch.keybinds)
+    if (patch.laneColors)  setLaneColors(patch.laneColors)
+    if (patch.sfxVolume   !== undefined) setSfxVolume(patch.sfxVolume)
+    if (patch.musicVolume !== undefined) setMusicVolume(patch.musicVolume)
+    localStorage.setItem('kronox-settings', JSON.stringify(next))
+  }
+
+  const handleGameStop = (status, stats) => {
+    if (status === 'complete') {
+      const grade = calcGrade(stats.accuracy)
+      saveLeaderboardEntry({ ...stats, grade, date: new Date().toLocaleDateString() })
+      setGameStats({ ...stats, grade })
+      setScreen('results')
+    } else {
+      setScreen('setup')
+    }
+  }
+
+  const handlePlayFromCatalog = song => {
+    // Increment play count (best-effort, non-blocking)
+    import('./supabase.js').then(({ incrementPlays }) => incrementPlays(song.id)).catch(() => {})
+    setGameConfig({
+      audioUrl:    song.audioUrl,
+      songTitle:   song.title,
+      bpm:         song.bpm,
+      subdivision: song.subdivision,
+      speed:       song.speed,
+      chart:       song.chart,
+      keybinds, laneColors, sfxVolume, musicVolume,
+    })
+    setScreen('game')
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh', background: '#111', overflow: 'hidden' }}>
-      <TitleBar onOpenSettings={() => setShowSettings(true)} />
+      {screen !== 'catalog' && (
+        <TitleBar
+          onToggleSettings={() => setShowSettings(s => !s)}
+          settingsOpen={showSettings}
+          onOpenCatalog={() => setScreen('catalog')}
+          onOpenLeaderboard={() => setShowLeaderboard(true)}
+        />
+      )}
+
       <div style={{ flex: 1, overflow: 'hidden' }}>
-        {screen === 'setup'
-          ? <SetupPanel keybinds={keybinds} onStart={cfg => { setGameConfig({ ...cfg, keybinds }); setScreen('game') }} />
-          : screen === 'game'
-          ? <GameView config={gameConfig} onStop={(status, stats) => { if (status === 'complete') { setGameStats(stats); setScreen('results') } else setScreen('setup') }} />
-          : <Results stats={gameStats} onExit={() => { setScreen('setup'); setGameStats(null) }} />
-        }
+        {screen === 'setup' && (
+          <SetupPanel
+            keybinds={keybinds}
+            laneColors={laneColors}
+            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume }); setScreen('game') }}
+            onOpenPublish={cfg => { setPublishConfig(cfg); setShowPublish(true) }}
+          />
+        )}
+        {screen === 'game' && gameConfig && (
+          <GameView config={gameConfig} onStop={handleGameStop} />
+        )}
+        {screen === 'results' && gameStats && (
+          <Results
+            stats={gameStats}
+            onExit={() => { setScreen('setup'); setGameStats(null) }}
+            onPlayAgain={() => { setGameStats(null); setScreen('game') }}
+          />
+        )}
+        {screen === 'catalog' && (
+          <CatalogPanel
+            onBack={() => setScreen('setup')}
+            onPlay={handlePlayFromCatalog}
+          />
+        )}
       </div>
-      {showSettings && <SettingsModal keybinds={keybinds} onSave={saveKeybinds} onClose={() => setShowSettings(false)} />}
+
+      <SettingsPanel
+        open={showSettings}
+        keybinds={keybinds}
+        laneColors={laneColors}
+        sfxVolume={sfxVolume}
+        musicVolume={musicVolume}
+        onChange={handleSettingsChange}
+        onClose={() => setShowSettings(false)}
+      />
+      {showLeaderboard && <LeaderboardModal onClose={() => setShowLeaderboard(false)} />}
+      {showPublish && publishConfig && (
+        <PublishModal config={publishConfig} onClose={() => { setShowPublish(false); setPublishConfig(null) }} />
+      )}
     </div>
   )
 }
