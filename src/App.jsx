@@ -1069,17 +1069,16 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     setAiGenerating(true)
     try {
       const arrayBuf = await songFile.arrayBuffer()
-      const sampleRate = 44100
-      const ctx = new OfflineAudioContext(1, 1, sampleRate)
+      const ctx = new OfflineAudioContext(1, 1, 44100)
       const decoded = await ctx.decodeAudioData(arrayBuf)
       const raw = decoded.getChannelData(0)
       const actualRate = decoded.sampleRate
 
-      // ── Step 1: compute RMS energy at each beat-grid step ─────────────────
-      // We know the BPM, so snap energy measurements to the musical grid.
-      const secPerStep = 60 / (bpm * subdivision)
-      const totalSteps = beats * subdivision
+      const secPerStep     = 60 / (bpm * subdivision)
+      const totalSteps     = beats * subdivision
       const samplesPerStep = Math.floor(secPerStep * actualRate)
+
+      // ── RMS energy per step ───────────────────────────────────────────────
       const stepEnergy = new Float32Array(totalSteps)
       for (let i = 0; i < totalSteps; i++) {
         const start = i * samplesPerStep
@@ -1089,14 +1088,13 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
         stepEnergy[i] = Math.sqrt(sum / Math.max(1, end - start))
       }
 
-      // ── Step 2: compute onset flux (positive energy increase vs prev step) ─
+      // ── Onset flux (positive energy jump vs previous step) ────────────────
       const flux = new Float32Array(totalSteps)
-      for (let i = 1; i < totalSteps; i++) {
+      for (let i = 1; i < totalSteps; i++)
         flux[i] = Math.max(0, stepEnergy[i] - stepEnergy[i - 1])
-      }
 
-      // ── Step 3: adaptive threshold using a large sliding window (≈1 bar) ──
-      const WIN = Math.max(4, subdivision * 4)   // 4 beats worth of steps
+      // ── Adaptive local average (2-beat window) ────────────────────────────
+      const WIN = Math.max(2, subdivision * 2)
       const smoothFlux = new Float32Array(totalSteps)
       for (let i = 0; i < totalSteps; i++) {
         let s = 0, c = 0
@@ -1106,44 +1104,76 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
         smoothFlux[i] = s / c
       }
 
-      // ── Step 4: pick onsets — flux must exceed local average by THRESH ────
-      const THRESH = 1.2
-      // Also enforce minimum gap of 1 step between notes (no 32nd-note spam)
-      const MIN_GAP = Math.max(1, Math.round(subdivision / 2))
+      // ── Pick onsets: any step where flux > local avg * 1.05 ──────────────
+      // MIN_GAP = 1 subdivision (e.g. 1 eighth-note), allows back-to-back notes
+      const MIN_GAP = 1
       const onsets = []
       let lastOnset = -MIN_GAP
-      for (let i = 8; i < totalSteps; i++) {
-        if (flux[i] > smoothFlux[i] * THRESH && flux[i] > 0 && i - lastOnset >= MIN_GAP) {
+      for (let i = 4; i < totalSteps; i++) {
+        if (flux[i] > smoothFlux[i] * 1.05 && flux[i] > 0 && i - lastOnset >= MIN_GAP) {
           onsets.push(i)
           lastOnset = i
         }
       }
 
-      // ── Step 5: density guard — if too sparse, lower threshold; too dense, raise ──
-      const targetDensity = 0.30   // aim for ~30% of steps having a note
+      // ── Density guard: target 55-70% of steps having a note ──────────────
+      const targetDensity = 0.62
       const target = Math.round(totalSteps * targetDensity)
-      if (onsets.length < target * 0.4 || onsets.length > target * 2.5) {
-        // Fall back to percentile-based selection from flux
-        const sorted = [...flux].sort((a, b) => b - a)
-        const cutoff = sorted[Math.min(target, sorted.length - 1)] || 0
-        onsets.length = 0
-        lastOnset = -MIN_GAP
-        for (let i = 8; i < totalSteps; i++) {
-          if (flux[i] >= cutoff && flux[i] > 0 && i - lastOnset >= MIN_GAP) {
-            onsets.push(i); lastOnset = i
-          }
+      if (onsets.length < target * 0.5) {
+        // Too sparse — fill in the top-N flux steps
+        const indexedFlux = Array.from(flux, (v, i) => [i, v])
+          .filter(([i]) => i >= 4)
+          .sort((a, b) => b[1] - a[1])
+        const inOnsets = new Set(onsets)
+        for (const [i] of indexedFlux) {
+          if (onsets.length >= target) break
+          if (!inOnsets.has(i)) { onsets.push(i); inOnsets.add(i) }
         }
+        onsets.sort((a, b) => a - b)
+      } else if (onsets.length > target * 1.2) {
+        // Too dense — keep only top-N by flux value
+        const ranked = onsets.map(i => [i, flux[i]]).sort((a, b) => b[1] - a[1])
+        const keep = new Set(ranked.slice(0, target).map(([i]) => i))
+        onsets.length = 0
+        for (let i = 0; i < totalSteps; i++) if (keep.has(i)) onsets.push(i)
       }
 
-      // ── Step 6: assign lanes (spread evenly, avoid repeating same lane) ───
+      // ── Hold note detection: measure how long energy stays elevated ───────
+      // A step gets a hold if the energy stays above 80% of its peak for
+      // multiple consecutive steps (sustained chord / bass note)
+      const holdLengths = new Int32Array(totalSteps) // 0 = tap, >1 = hold length
+      for (const step of onsets) {
+        const peak = stepEnergy[step]
+        if (peak < 0.01) continue
+        let len = 1
+        for (let k = step + 1; k < totalSteps && k < step + subdivision * 4; k++) {
+          if (stepEnergy[k] >= peak * 0.70 && !onsets.includes(k)) len++
+          else break
+        }
+        if (len >= subdivision) holdLengths[step] = len  // only hold if ≥ 1 beat long
+      }
+
+      // ── Build chart ───────────────────────────────────────────────────────
       undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
       const newChart = buildChart(totalSteps)
       let prevLane = -1
+      // Track which steps are consumed by hold tails so we skip them
+      const consumed = new Set()
       for (const step of onsets) {
-        // Pick a random lane that isn't the same as previous
+        if (consumed.has(step)) continue
         let lane = Math.floor(Math.random() * 4)
         if (lane === prevLane) lane = (lane + 1 + Math.floor(Math.random() * 3)) % 4
-        newChart[step][lane] = 1
+        const holdLen = holdLengths[step]
+        if (holdLen >= subdivision) {
+          // Write hold: head cell = length, tail cells = -1
+          newChart[step][lane] = holdLen
+          for (let k = step + 1; k < step + holdLen && k < totalSteps; k++) {
+            newChart[k][lane] = -1
+            consumed.add(k)
+          }
+        } else {
+          newChart[step][lane] = 1
+        }
         prevLane = lane
       }
       setChart(newChart); saveSettings({ chart: newChart })
@@ -1381,7 +1411,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
               {isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
             </button>
             <span style={{ fontFamily: 'Arial', fontSize: 12, color: '#888' }}>
-              {Math.floor(previewPos)}s / {audioRef.current ? Math.floor(audioRef.current.duration || 0) : 0}s
+              {Math.floor(previewPos || 0)}s / {audioRef.current ? Math.floor(audioRef.current.duration || 0) : 0}s
             </span>
           </div>
           <div style={{ height: 4, background: '#222', borderRadius: 2, overflow: 'hidden', cursor: 'pointer' }}
