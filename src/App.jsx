@@ -960,6 +960,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const [holdMode,  setHoldMode]  = useState(false)
   const [holdStart, setHoldStart] = useState(null)
   const [autoplay,  setAutoplay]  = useState(false)
+  const [mode3d,    setMode3d]    = useState(saved.mode3d || false)
 
   // Slow mode
   const [slowModeKey,      setSlowModeKey]      = useState(saved.slowModeKey   || 'q')
@@ -1687,8 +1688,12 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${autoplay ? '#ffd93d55' : '#222'}`, background: autoplay ? '#ffd93d11' : 'transparent', color: autoplay ? '#ffd93d' : '#555', cursor: 'pointer', transition: 'all 0.15s' }}>
           {autoplay ? '▶▶ AUTOPLAY ON' : 'AUTOPLAY'}
         </button>
+        <button onClick={() => { setMode3d(m => !m); saveSettings({ mode3d: !mode3d }) }}
+          style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${mode3d ? '#cc44ff55' : '#222'}`, background: mode3d ? '#cc44ff11' : 'transparent', color: mode3d ? '#cc44ff' : '#555', cursor: 'pointer', transition: 'all 0.15s' }}>
+          {mode3d ? '3D ON' : '3D MODE'}
+        </button>
         <button
-          onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds, autoplay })}
+          onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds, autoplay, mode3d })}
           disabled={!songFile}
           style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 13, letterSpacing: 1, fontWeight: 'bold', padding: '12px 28px', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: autoplay ? '#ffd93d' : songFile ? '#66ff99' : '#1a1a1a', color: songFile ? '#111' : '#333', border: songFile ? 'none' : '1px solid #2a2a2a', transition: 'all 0.2s' }}
           onMouseEnter={e => { if (songFile) { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'scale(1.02)' } }}
@@ -2127,23 +2132,49 @@ function GameView({ config, onStop }) {
           const isBeingHeld = !!s.heldNotes[note.lane] && s.heldNotes[note.lane].note === note
           const noteColor   = laneColors[note.lane]
 
-          // ── Note head: colored circle ─────────────────────────────────────
+          // ── Note head ─────────────────────────────────────────────────────
           if (!isBeingHeld) {
             if (!note.el) {
               const el = document.createElement('div')
               el.className = 'fnf-note'
-              el.style.cssText = `
-                position:absolute;
-                left:50%;
-                transform:translateX(-50%);
-                width:${NOTE_SIZE}px;
-                height:${NOTE_SIZE}px;
-                border-radius:50%;
-                background:${noteColor};
-                box-shadow:0 0 10px ${noteColor}55;
-                pointer-events:none;
-                z-index:3;
-              `
+              if (config.mode3d) {
+                const D     = NOTE_SIZE
+                const r     = D / 2
+                const capRY = Math.round(r * 1.14)
+                const bodyH = Math.round(D * 0.20)
+                const sw    = 3
+                const pad   = sw + 2
+                const svgW  = D + pad * 2
+                const svgH  = 2 * (pad + capRY)
+                const cx    = svgW / 2
+                const capCY = pad + capRY
+                el.style.cssText = `
+                  position:absolute;
+                  left:50%;
+                  transform:translateX(-50%);
+                  width:${svgW}px;
+                  height:${svgH}px;
+                  pointer-events:none;
+                  z-index:3;
+                `
+                el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}">
+                  <rect x="${pad}" y="${capCY}" width="${D}" height="${bodyH}" fill="${noteColor}"/>
+                  <ellipse cx="${cx}" cy="${capCY}" rx="${r}" ry="${capRY}" fill="${noteColor}" stroke="#999" stroke-width="${sw}"/>
+                </svg>`
+              } else {
+                el.style.cssText = `
+                  position:absolute;
+                  left:50%;
+                  transform:translateX(-50%);
+                  width:${NOTE_SIZE}px;
+                  height:${NOTE_SIZE}px;
+                  border-radius:50%;
+                  background:${noteColor};
+                  box-shadow:0 0 10px ${noteColor}55;
+                  pointer-events:none;
+                  z-index:3;
+                `
+              }
               laneEls?.[note.lane]?.appendChild(el)
               note.el = el
             }
@@ -2152,21 +2183,34 @@ function GameView({ config, onStop }) {
             if (note.el) { note.el.remove(); note.el = null }
           }
 
-          // ── Hold trail: full-width pill that extends below the note head ──
+          // ── Hold trail ────────────────────────────────────────────────────
           if (note.holdDurationMs > 0) {
             if (!note.trailEl) {
               const tr = document.createElement('div')
               tr.className = 'fnf-hold-trail'
-              tr.style.cssText = `
-                position:absolute;
-                left:50%;
-                transform:translateX(-50%);
-                width:${NOTE_SIZE}px;
-                border-radius:${NOTE_SIZE / 2}px;
-                background:${noteColor}55;
-                pointer-events:none;
-                z-index:1;
-              `
+              if (config.mode3d) {
+                tr.style.cssText = `
+                  position:absolute;
+                  left:50%;
+                  transform:translateX(-50%);
+                  width:${NOTE_SIZE}px;
+                  border-radius:${NOTE_SIZE / 2}px;
+                  background:${noteColor}88;
+                  pointer-events:none;
+                  z-index:1;
+                `
+              } else {
+                tr.style.cssText = `
+                  position:absolute;
+                  left:50%;
+                  transform:translateX(-50%);
+                  width:${NOTE_SIZE}px;
+                  border-radius:${NOTE_SIZE / 2}px;
+                  background:${noteColor}55;
+                  pointer-events:none;
+                  z-index:1;
+                `
+              }
               laneEls?.[note.lane]?.appendChild(tr)
               note.trailEl = tr
             }
@@ -2282,36 +2326,104 @@ function GameView({ config, onStop }) {
         }} />
 
         {/* Highway */}
-        <div style={{
-          position: 'absolute', top: 0, bottom: 0,
-          left: '50%',
-          transform: config.scrollDown !== false ? 'translateX(-50%)' : 'translateX(-50%) scaleY(-1)',
-          width: TOTAL_W, display: 'flex', gap: LANE_GAP,
-        }}>
-          {[0, 1, 2, 3].map(l => (
-            <div key={l} className="fnf-lane" style={{
-              position: 'relative', width: LANE_W, flexShrink: 0, overflow: 'visible',
-              background: `${laneColors[l]}07`,
-              borderLeft:  `1px solid ${laneColors[l]}1a`,
-              borderRight: `1px solid ${laneColors[l]}1a`,
-            }}
-              onTouchStart={e => { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=true; return n }); hitNote(l) }}
-              onTouchEnd={e => { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=false; return n }); releaseHold(l) }}
-            >
-              {/* Receptor */}
-              <div style={{
-                position: 'absolute', bottom: RECEPTOR_BOTTOM, left: '50%',
-                transform: receptorPressed[l]
-                  ? `translateX(-50%) scale(0.88)${config.scrollDown !== false ? '' : ' scaleY(-1)'}`
-                  : `translateX(-50%) scale(1)${config.scrollDown !== false ? '' : ' scaleY(-1)'}`,
-                width: NOTE_SIZE, height: NOTE_SIZE, borderRadius: '50%',
-                border: `2px solid ${receptorPressed[l] ? laneColors[l] : laneColors[l] + '44'}`,
-                background: receptorPressed[l] ? laneColors[l] + '20' : 'transparent',
-                transition: 'all 0.04s', zIndex: 3, boxSizing: 'border-box',
-              }} />
+        {config.mode3d ? (
+          // ── Guitar Hero 3D perspective highway ──────────────────────────
+          <div style={{
+            position: 'absolute', inset: 0,
+            perspective: '1800px',
+            perspectiveOrigin: '50% -10%',
+            overflow: 'hidden',
+          }}>
+            {/* Fretboard plane */}
+            <div style={{
+              position: 'absolute', bottom: 0, left: '50%',
+              width: TOTAL_W + LANE_GAP * 2,
+              height: '500%',
+              transform: 'translateX(-50%) rotateX(48deg)',
+              transformOrigin: '50% 100%',
+              transformStyle: 'preserve-3d',
+              display: 'flex', gap: LANE_GAP,
+              background: '#0a0a0a',
+            }}>
+              {/* Fret lines across all lanes */}
+              {Array.from({ length: 24 }, (_, i) => (
+                <div key={i} style={{
+                  position: 'absolute', left: 0, right: 0,
+                  bottom: `${(i + 1) * (100 / 24)}%`, height: 1,
+                  background: '#ffffff0a', zIndex: 0, pointerEvents: 'none',
+                }} />
+              ))}
+              {[0, 1, 2, 3].map(l => (
+                <div key={l} className="fnf-lane" style={{
+                  position: 'relative', width: LANE_W, flexShrink: 0, overflow: 'visible',
+                  background: `${laneColors[l]}12`,
+                  borderLeft:  `1px solid ${laneColors[l]}30`,
+                  borderRight: `1px solid ${laneColors[l]}30`,
+                }}
+                  onTouchStart={e => { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=true; return n }); hitNote(l) }}
+                  onTouchEnd={e =>   { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=false; return n }); releaseHold(l) }}
+                >
+                  {/* 3D Receptor: circle pad */}
+                  <div style={{
+                    position: 'absolute', bottom: RECEPTOR_BOTTOM, left: '50%',
+                    transform: receptorPressed[l] ? 'translateX(-50%) scale(0.88)' : 'translateX(-50%) scale(1)',
+                    width: NOTE_SIZE, height: NOTE_SIZE, borderRadius: '50%',
+                    border: `2px solid ${receptorPressed[l] ? laneColors[l] : laneColors[l] + '55'}`,
+                    background: receptorPressed[l] ? laneColors[l] + '40' : laneColors[l] + '10',
+                    boxShadow: receptorPressed[l] ? `0 0 16px ${laneColors[l]}88` : 'none',
+                    transition: 'all 0.04s', zIndex: 3, boxSizing: 'border-box',
+                  }} />
+                  {/* Lane glow strip at receptor */}
+                  <div style={{
+                    position: 'absolute', bottom: 0, left: 0, right: 0, height: RECEPTOR_BOTTOM + 20,
+                    background: `linear-gradient(to top, ${laneColors[l]}18, transparent)`,
+                    pointerEvents: 'none', zIndex: 0,
+                  }} />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+            {/* Stage edge glow bar */}
+            <div style={{
+              position: 'absolute', bottom: RECEPTOR_BOTTOM - 10, left: '50%',
+              transform: 'translateX(-50%)',
+              width: TOTAL_W + LANE_GAP * 2, height: 3,
+              background: 'linear-gradient(to right, transparent, #ffffff18, #ffffff30, #ffffff18, transparent)',
+              zIndex: 5, pointerEvents: 'none',
+            }} />
+          </div>
+        ) : (
+          // ── Standard 2D highway ─────────────────────────────────────────
+          <div style={{
+            position: 'absolute', top: 0, bottom: 0,
+            left: '50%',
+            transform: config.scrollDown !== false ? 'translateX(-50%)' : 'translateX(-50%) scaleY(-1)',
+            width: TOTAL_W, display: 'flex', gap: LANE_GAP,
+          }}>
+            {[0, 1, 2, 3].map(l => (
+              <div key={l} className="fnf-lane" style={{
+                position: 'relative', width: LANE_W, flexShrink: 0, overflow: 'visible',
+                background: `${laneColors[l]}07`,
+                borderLeft:  `1px solid ${laneColors[l]}1a`,
+                borderRight: `1px solid ${laneColors[l]}1a`,
+              }}
+                onTouchStart={e => { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=true; return n }); hitNote(l) }}
+                onTouchEnd={e =>   { if (config.autoplay) return; e.preventDefault(); setReceptorPressed(p => { const n=[...p]; n[l]=false; return n }); releaseHold(l) }}
+              >
+                {/* Receptor */}
+                <div style={{
+                  position: 'absolute', bottom: RECEPTOR_BOTTOM, left: '50%',
+                  transform: receptorPressed[l]
+                    ? `translateX(-50%) scale(0.88)${config.scrollDown !== false ? '' : ' scaleY(-1)'}`
+                    : `translateX(-50%) scale(1)${config.scrollDown !== false ? '' : ' scaleY(-1)'}`,
+                  width: NOTE_SIZE, height: NOTE_SIZE, borderRadius: '50%',
+                  border: `2px solid ${receptorPressed[l] ? laneColors[l] : laneColors[l] + '44'}`,
+                  background: receptorPressed[l] ? laneColors[l] + '20' : 'transparent',
+                  transition: 'all 0.04s', zIndex: 3, boxSizing: 'border-box',
+                }} />
+              </div>
+            ))}
+          </div>
+        )}
 
         {/* HUD */}
         <div style={{ position: 'absolute', top: 12, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', padding: '0 20px', pointerEvents: 'none', zIndex: 10 }}>
