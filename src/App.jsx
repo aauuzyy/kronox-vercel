@@ -149,7 +149,7 @@ function TitleBarBtn({ onClick, children, active }) {
 }
 
 // ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
-function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, onChange, onClose }) {
+function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, flashColor, onChange, onClose }) {
   const [keys,      setKeys]      = useState([...keybinds])
   const [listening, setListening] = useState(null)
   const [conflict,  setConflict]  = useState(null)
@@ -317,7 +317,13 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
           <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Column flash</span>
-              <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#555' }}>{Math.round(flashOpacity * 100)}%</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#555' }}>{Math.round(flashOpacity * 100)}%</span>
+                <div style={{ width: 22, height: 22, borderRadius: 4, background: flashColor, border: '1px solid #333', flexShrink: 0 }} />
+                <input type="color" value={flashColor}
+                  onChange={e => onChange({ flashColor: e.target.value })}
+                  style={{ width: 28, height: 22, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+              </div>
             </div>
             <input type="range" min={0} max={1} step={0.01} value={flashOpacity}
               onChange={e => onChange({ flashOpacity: parseFloat(e.target.value) })}
@@ -1990,10 +1996,12 @@ function GameView({ config, onStop }) {
 
   const flashLane = useCallback(laneEl => {
     if (!laneEl) return
-    const op = loadSettings().flashOpacity ?? 0.13
+    const s2 = loadSettings()
+    const op = s2.flashOpacity ?? 0.13
     if (op === 0) return
+    const fc = s2.flashColor || '#ffffff'
     const flash = document.createElement('div')
-    flash.style.cssText = `position:absolute;inset:0;background:#ffffff;opacity:${op};pointer-events:none;z-index:5;transition:opacity 0.25s;`
+    flash.style.cssText = `position:absolute;inset:0;background:${fc};opacity:${op};pointer-events:none;z-index:5;transition:opacity 0.25s;`
     laneEl.appendChild(flash)
     requestAnimationFrame(() => requestAnimationFrame(() => { flash.style.opacity = '0' }))
     setTimeout(() => flash.remove(), 300)
@@ -2935,6 +2943,7 @@ export default function App() {
   const [scrollDown,   setScrollDown]   = useState(saved.scrollDown  !== false)
   const [starColor,    setStarColor]    = useState(saved.starColor    || '#ffffff')
   const [flashOpacity, setFlashOpacity] = useState(saved.flashOpacity ?? 0.13)
+  const [flashColor,   setFlashColor]   = useState(saved.flashColor   || '#ffffff')
 
   const handleSettingsChange = patch => {
     const next = { ...loadSettings(), ...patch }
@@ -2946,6 +2955,7 @@ export default function App() {
     if (patch.scrollDown     !== undefined) setScrollDown(patch.scrollDown)
     if (patch.starColor      !== undefined) setStarColor(patch.starColor)
     if (patch.flashOpacity   !== undefined) setFlashOpacity(patch.flashOpacity)
+    if (patch.flashColor     !== undefined) setFlashColor(patch.flashColor)
     localStorage.setItem('kronox-settings', JSON.stringify(next))
   }
 
@@ -3073,6 +3083,7 @@ export default function App() {
         scrollDown={scrollDown}
         starColor={starColor}
         flashOpacity={flashOpacity}
+        flashColor={flashColor}
         onChange={handleSettingsChange}
         onClose={() => setShowSettings(false)}
       />
