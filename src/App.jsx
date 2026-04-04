@@ -56,17 +56,18 @@ function calcGrade(accuracy) {
 }
 
 // ── Difficulty rating (0.5 – 30) ──────────────────────────────────────────────
-function calcDifficulty(chart, bpm, speed, subdivision) {
+function calcDifficulty(chart, bpm, subdivision) {
   if (!chart?.length) return 0
-  const noteCount   = chart.flat().filter(v => v > 0).length
+  const noteCount = chart.flat().filter(v => v > 0).length
   if (!noteCount) return 0
-  // Factor 1: total note count — more notes = harder (0–10)
-  const countScore  = Math.min(noteCount / 1500, 1) * 10
-  // Factor 2: note density — notes per step (0–10). Captures interplay of count + song length.
-  const densityScore = Math.min((noteCount / Math.max(chart.length, 1)) / 1.2, 1) * 10
-  // Factor 3: scroll speed — faster = harder (0–10)
-  const speedScore  = Math.min(Math.max(speed - 0.5, 0) / 4.5, 1) * 10
-  return Math.max(0.5, Math.round((countScore + densityScore + speedScore) * 10) / 10)
+  const sub         = subdivision || 1
+  const durationSec = (chart.length / (bpm * sub)) * 60
+  const notesPerSec = noteCount / Math.max(durationSec, 1)
+  // countScore: 0–15, maxes at 3000 notes (very dense full chart)
+  const countScore   = Math.min(noteCount / 3000, 1) * 15
+  // densityScore: 0–15, maxes at 12 notes/sec (4 lanes every 3rd 16th note at 180 BPM)
+  const densityScore = Math.min(notesPerSec / 12, 1) * 15
+  return Math.max(0.5, Math.round((countScore + densityScore) * 10) / 10)
 }
 
 function diffColor(d) {
@@ -165,7 +166,9 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
       e.preventDefault()
       const ci = keys.findIndex((k, i) => k === e.key && i !== listening)
       if (ci !== -1) { setConflict(ci); setTimeout(() => setConflict(null), 1200); return }
-      setKeys(prev => { const n = [...prev]; n[listening] = e.key; return n })
+      const newKeys = keys.map((k, i) => i === listening ? e.key : k)
+      setKeys(newKeys)
+      onChange({ keybinds: newKeys })
       setListening(null)
     }
     window.addEventListener('keydown', handler)
@@ -754,8 +757,8 @@ function PublishModal({ config, onClose }) {
                 onFocus={e => e.target.style.borderColor = '#555'} onBlur={e => e.target.style.borderColor = '#333'} />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-              {[['BPM', config.bpm], ['SPEED', config.speed + 'x'], ['NOTES', (config.chart || []).flat().filter(v => v > 0).length]].map(([l, v]) => (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,1fr)', gap: 8 }}>
+              {[['BPM', config.bpm], ['NOTES', (config.chart || []).flat().filter(v => v > 0).length]].map(([l, v]) => (
                 <div key={l} style={{ background: '#111', borderRadius: 5, padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 3 }}>
                   <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#444', letterSpacing: 2 }}>{l}</span>
                   <span style={{ fontFamily: 'Arial', fontSize: 15, color: '#fff', fontWeight: 'bold' }}>{v}</span>
@@ -790,7 +793,7 @@ function PublishModal({ config, onClose }) {
 }
 
 // ─── Catalog Panel ────────────────────────────────────────────────────────────
-function CatalogPanel({ onBack, onPlay, onPreview }) {
+function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
   const [songs,   setSongs]   = useState([])
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
@@ -879,7 +882,7 @@ function CatalogPanel({ onBack, onPlay, onPreview }) {
         )}
 
         {filtered.map(song => {
-          const diff    = song.chart ? calcDifficulty(song.chart, song.bpm, song.speed, song.subdivision) : null
+          const diff    = song.chart ? calcDifficulty(song.chart, song.bpm, song.subdivision) : null
           const liked   = myLikes.has(song.id)
           return (
           <div key={song.id}
@@ -918,6 +921,14 @@ function CatalogPanel({ onBack, onPlay, onPreview }) {
                   ▷ 15s
                 </button>
               )}
+              {song.chart && (
+                <button onClick={e => { e.stopPropagation(); onEdit(song) }}
+                  style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 12px', borderRadius: 5, background: 'transparent', color: '#888', border: '1px solid #333', cursor: 'pointer', transition: 'all 0.12s' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#555' }}
+                  onMouseLeave={e => { e.currentTarget.style.color = '#888'; e.currentTarget.style.borderColor = '#333' }}>
+                  EDIT
+                </button>
+              )}
               <button onClick={() => onPlay(song)}
                 style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
                 PLAY
@@ -938,7 +949,7 @@ function CatalogPanel({ onBack, onPlay, onPreview }) {
 }
 
 // ─── SetupPanel ───────────────────────────────────────────────────────────────
-function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPublish, musicVolume, sfxVolume }) {
+function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPublish, musicVolume, sfxVolume, initialChart }) {
   const activeLaneColors = (Array.isArray(savedLaneColors) && savedLaneColors.length === 4) ? savedLaneColors : LANE_COLORS
   const [songFile,    setSongFile]    = useState(null)
   const [previewPos,  setPreviewPos]  = useState(0)
@@ -946,14 +957,14 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const audioRef = useRef(null)
 
   const saved = loadSettings()
-  const [songTitle,   setSongTitle]   = useState(saved.songTitle   || 'My Song')
-  const [speed,       setSpeed]       = useState(saved.speed       || 2.0)
-  const [bpm,         setBpm]         = useState(saved.bpm         || 120)
-  const [beats,       setBeats]       = useState(saved.beats       || DEFAULT_BEATS)
-  const [subdivision, setSubdivision] = useState(saved.subdivision || 1)
+  const [songTitle,   setSongTitle]   = useState(initialChart?.title       || saved.songTitle   || 'My Song')
+  const [speed,       setSpeed]       = useState(saved.speed               || 2.0)
+  const [bpm,         setBpm]         = useState(initialChart?.bpm         || saved.bpm         || 120)
+  const [beats,       setBeats]       = useState(initialChart?.beats       || saved.beats       || DEFAULT_BEATS)
+  const [subdivision, setSubdivision] = useState(initialChart?.subdivision || saved.subdivision || 1)
   const [chart, setChart] = useState(
-    saved.chart && Array.isArray(saved.chart)
-      ? saved.chart
+    initialChart?.chart ? initialChart.chart
+      : saved.chart && Array.isArray(saved.chart) ? saved.chart
       : buildChart((saved.beats || DEFAULT_BEATS) * (saved.subdivision || 1))
   )
   const [activeTab, setActiveTab] = useState('chart')
@@ -965,6 +976,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   // Slow mode
   const [slowModeKey,      setSlowModeKey]      = useState(saved.slowModeKey   || 'q')
   const [slowModeSpeed,    setSlowModeSpeed]    = useState(saved.slowModeSpeed || 0.5)
+  const [slowModeEnabled,  setSlowModeEnabled]  = useState(saved.slowModeEnabled !== false)
   const [isSlowMode,       setIsSlowMode]       = useState(false)
   const [capturingSlowKey, setCapturingSlowKey] = useState(false)
 
@@ -1118,29 +1130,50 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       // ── Initial active steps: onset threshold ─────────────────────────────
       const active = new Uint8Array(totalSteps)
       for (let i = 1; i < totalSteps; i++) {
-        if (onsetStr[i] >= 0.15) active[i] = 1
+        if (onsetStr[i] >= 0.04) active[i] = 1
       }
 
-      // ── Density fill: build to 78% then cap at 85% ───────────────────────
-      // Count using loop (avoids spread-operator stack overflow on large arrays)
+      // ── Density fill: target 55%, cap 65% (local relative RMS so quiet sections compete) ──
       let cnt = 0; for (let i = 0; i < totalSteps; i++) cnt += active[i]
-      const TARGET = Math.round(totalSteps * 0.78)
-      const CAP    = Math.round(totalSteps * 0.85)
+      const TARGET = Math.round(totalSteps * 0.55)
+      const CAP    = Math.round(totalSteps * 0.65)
       if (cnt < TARGET) {
-        // Rank inactive steps by RMS, fill highest-energy ones first
+        const winSize = subdivision * 4
+        const relRMS  = new Float32Array(totalSteps)
+        for (let i = 0; i < totalSteps; i++) {
+          const ws = Math.max(0, i - winSize / 2), we = Math.min(totalSteps, i + winSize / 2)
+          let localMax = 0
+          for (let j = ws; j < we; j++) if (stepRMS[j] > localMax) localMax = stepRMS[j]
+          relRMS[i] = localMax > 0 ? stepRMS[i] / localMax : 0
+        }
         const inactive = []
         for (let i = 1; i < totalSteps; i++) if (!active[i]) inactive.push(i)
-        inactive.sort((a, b) => stepRMS[b] - stepRMS[a])
+        inactive.sort((a, b) => relRMS[b] - relRMS[a])
         const need = Math.min(TARGET - cnt, inactive.length)
         for (let n = 0; n < need; n++) { active[inactive[n]] = 1; cnt++ }
       }
       if (cnt > CAP) {
-        // Trim weakest active steps
         const actArr = []
         for (let i = 1; i < totalSteps; i++) if (active[i]) actArr.push([i, onsetStr[i] + stepRMS[i]])
         actArr.sort((a, b) => a[1] - b[1])
         const remove = cnt - CAP
         for (let n = 0; n < remove; n++) active[actArr[n][0]] = 0
+      }
+
+      // ── Floor pass (runs AFTER trim): force at least 1 note per beat ─────
+      // Quiet sections survive trimming because this runs last
+      for (let beat = 0; beat < Math.ceil(totalSteps / subdivision); beat++) {
+        const start = beat * subdivision
+        const end   = Math.min(start + subdivision, totalSteps)
+        let hasNote = false
+        for (let i = start; i < end; i++) if (active[i]) { hasNote = true; break }
+        if (!hasNote) {
+          let best = start, bestRMS = -1
+          for (let i = start; i < end; i++) {
+            if (stepRMS[i] > bestRMS) { bestRMS = stepRMS[i]; best = i }
+          }
+          active[best] = 1
+        }
       }
 
       // ── Energy percentiles for chord decisions ────────────────────────────
@@ -1163,7 +1196,68 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []
       const newChart = buildChart(totalSteps)
       const consumed = new Set()
-      let phase = 0   // cycles 0-1-2-3 for stream lane selection
+
+      // ── Stream patterns: every common rhythm game pattern ─────────────────
+      const STREAMS = [
+        // Straights
+        [0,1,2,3],           // straight right
+        [3,2,1,0],           // straight left
+        // Rolls
+        [0,1,2,1],           // roll center
+        [3,2,1,2],           // roll center rev
+        [0,1,0,1],           // trill left
+        [2,3,2,3],           // trill right
+        [1,2,1,2],           // trill mid
+        [0,3,0,3],           // outer trill
+        // Cross / jump streams
+        [0,2,1,3],           // cross
+        [3,1,2,0],           // cross rev
+        [1,3,0,2],           // spread
+        [2,0,3,1],           // spread rev
+        // Staircases
+        [0,1,3,2],           // staircase A
+        [2,3,1,0],           // staircase B
+        [1,0,2,3],           // staircase C
+        [3,2,0,1],           // staircase D
+        // Drops / anchors
+        [0,3,1,3],           // anchor right
+        [3,0,2,0],           // anchor left
+        [1,0,3,0],           // anchor left mid
+        [2,3,0,3],           // anchor right mid
+        // Gallops & syncopated
+        [0,2,3,1],           // gallop A
+        [3,1,0,2],           // gallop B
+        [1,3,2,0],           // gallop C
+        [2,0,1,3],           // gallop D
+        // 3-step mini patterns (repeat on 4th)
+        [0,1,2,0],           // mini stair A
+        [3,2,1,3],           // mini stair B
+        [0,2,0,3],           // bounce A
+        [3,1,3,0],           // bounce B
+        // Splits
+        [0,3,2,1],           // outer-in
+        [1,2,3,0],           // inner-out
+        [0,3,1,2],           // jump A
+        [3,0,2,1],           // jump B
+      ]
+      let streamIdx    = 0   // which pattern we're using
+      let streamPos    = 0   // position within that pattern
+      let streamUses   = 0   // how many notes used from this pattern
+      const patternLen = () => STREAMS[streamIdx].length
+
+      const nextLane = () => {
+        const lane = STREAMS[streamIdx][streamPos % patternLen()]
+        streamPos++
+        streamUses++
+        // Switch pattern every 8–16 notes to keep things fresh
+        const switchEvery = 8 + (streamIdx % 3) * 4
+        if (streamUses >= switchEvery) {
+          streamIdx  = (streamIdx + 1 + Math.floor(Math.random() * 3)) % STREAMS.length
+          streamPos  = 0
+          streamUses = 0
+        }
+        return lane
+      }
 
       for (let i = 1; i < totalSteps; i++) {
         if (!active[i] || consumed.has(i)) continue
@@ -1175,38 +1269,46 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
         // ── Lane selection: chord width based on energy + beat position ─────
         let lanes
         if (e >= p85 && os > 0.4) {
-          // Strongest hits: 3-note chord
-          lanes = CHORD3[phase % CHORD3.length]
-          phase += lanes.length
-        } else if (e >= p70 && os > 0.25) {
+          // Strongest hits: 3-note chord — pick a shape that doesn't repeat last
+          lanes = CHORD3[(streamIdx + streamPos) % CHORD3.length]
+          streamPos++
+        } else if (e >= p70 && os > 0.18) {
           // Strong hit: 2-note chord
-          lanes = CHORD2[phase % CHORD2.length]
-          phase += 2
-        } else if (e >= p40 && (onBeat || onHalfBeat) && Math.random() < 0.45) {
-          // Medium energy on a beat: occasional 2-note chord
-          lanes = CHORD2[phase % CHORD2.length]
-          phase += 2
+          lanes = CHORD2[(streamIdx + streamPos) % CHORD2.length]
+          streamPos++
+        } else if (e >= p40 && (onBeat || onHalfBeat) && Math.random() < 0.52) {
+          // Medium energy on beat: 2-note chord
+          lanes = CHORD2[(streamIdx + streamPos) % CHORD2.length]
+          streamPos++
         } else {
-          // Single note: cycling stream pattern 0→1→2→3→0→1→2→3…
-          lanes = [phase % 4]
-          phase++
+          // Single note from current stream pattern
+          lanes = [nextLane()]
         }
 
-        // ── Hold detection: scan forward for sustained energy ─────────────
-        // Requires energy stays ≥ 35% of peak for consecutive steps
+        // ── Hold detection: real sustained note vs wall-of-loud ──────────────
+        // Compare this onset against the local average — in speedcore everything
+        // has high onset so nothing stands out; in a vocal hold one onset is a
+        // clear outlier above a calm baseline. Also break if another onset
+        // interrupts (= a new separate note, not a continuation).
         let holdLane = -1, holdSteps = 0
-        if (os > 0.28 || e >= p70) {
+        const localWin = subdivision * 2
+        let localSum = 0, localCnt = 0
+        for (let k = Math.max(1, i - localWin); k < Math.min(totalSteps, i + localWin); k++) {
+          if (k !== i) { localSum += onsetStr[k]; localCnt++ }
+        }
+        const localAvg = localCnt > 0 ? localSum / localCnt : 0
+        // Only hold if this onset is a clear standout (3× local avg) and not in a chaotic section
+        if (os > 0.3 && os > localAvg * 3 && e >= p70) {
           const peak = e
           let run = 0
-          for (let k = i + 1; k < totalSteps && k < i + subdivision * 4; k++) {
-            if (stepRMS[k] >= peak * 0.35) run++
+          for (let k = i + 1; k < totalSteps && k < i + subdivision * 2; k++) {
+            if (onsetStr[k] > 0.18) break // another onset = new note, not a hold
+            if (stepRMS[k] >= peak * 0.60) run++
             else break
           }
-          // Hold needs at least 1 full beat worth of steps
           if (run >= subdivision) {
             holdLane  = lanes[0]
-            holdSteps = run + 1
-            // Mark hold-body steps as consumed so they don't spawn their own notes
+            holdSteps = Math.min(run + 1, subdivision * 2)
             for (let k = i + 1; k < i + holdSteps && k < totalSteps; k++) {
               active[k] = 0; consumed.add(k)
             }
@@ -1318,8 +1420,13 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     if (!songFile || !audioRef.current) return
     audioRef.current.currentTime = 0
     // Start in slow mode by default so you can toggle it off mid-recording
-    audioRef.current.playbackRate = slowModeSpeed
-    setIsSlowMode(true)
+    if (slowModeEnabled) {
+      audioRef.current.playbackRate = slowModeSpeed
+      setIsSlowMode(true)
+    } else {
+      audioRef.current.playbackRate = 1.0
+      setIsSlowMode(false)
+    }
     recordChartRef.current = buildChart(beats * subdivision)
     recordKeyDownRef.current = {}
     setRecordChart(null)
@@ -1397,6 +1504,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       recordChartRef.current = newChart
     }
     const handleSlowKey = e => {
+      if (!slowModeEnabled) return
       if (e.key !== slowModeKey) return
       e.preventDefault()
       setIsSlowMode(prev => {
@@ -1413,7 +1521,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       window.removeEventListener('keydown', handleSlowKey)
       audio?.removeEventListener('ended', stopRecording)
     }
-  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed])
+  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed, slowModeEnabled])
 
   const applyRecordedChart   = () => { if (!recordChart) return; undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
   const discardRecordedChart = () => setRecordChart(null)
@@ -1567,9 +1675,15 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
             <>
               {/* Slow mode settings */}
               <div style={{ background: '#1a1a1a', border: '1px solid #222', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
-                  <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#555' }} />
-                  <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#555', letterSpacing: 3, fontWeight: 'bold' }}>SLOW MODE</span>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <div style={{ width: 5, height: 5, borderRadius: '50%', background: slowModeEnabled ? '#ff4d8f' : '#555' }} />
+                    <span style={{ fontFamily: 'Arial', fontSize: 8, color: slowModeEnabled ? '#ff4d8f' : '#555', letterSpacing: 3, fontWeight: 'bold' }}>SLOW MODE</span>
+                  </div>
+                  <button onClick={() => { const next = !slowModeEnabled; setSlowModeEnabled(next); saveSettings({ slowModeEnabled: next }) }}
+                    style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '4px 12px', borderRadius: 4, cursor: 'pointer', background: slowModeEnabled ? '#ff4d8f' : 'transparent', border: `1px solid ${slowModeEnabled ? '#ff4d8f' : '#333'}`, color: slowModeEnabled ? '#fff' : '#444', fontWeight: slowModeEnabled ? 'bold' : 'normal' }}>
+                    {slowModeEnabled ? 'ON' : 'OFF'}
+                  </button>
                 </div>
                 <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#333', lineHeight: 1.55 }}>
                   Toggle during recording to slow audio + notes together — timing stays accurate.
@@ -1681,7 +1795,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           </SmallBtn>
         )}
         {songFile && (() => {
-          const d = calcDifficulty(chart, bpm, speed, subdivision)
+          const d = calcDifficulty(chart, bpm, subdivision)
           return <span style={{ fontFamily: 'Arial', fontSize: 9, color: diffColor(d), background: diffColor(d) + '18', padding: '6px 12px', borderRadius: 5, letterSpacing: 1 }}>★ {d}</span>
         })()}
         <button onClick={() => setAutoplay(a => !a)}
@@ -2173,12 +2287,23 @@ function GameView({ config, onStop }) {
                   box-shadow:0 0 10px ${noteColor}55;
                   pointer-events:none;
                   z-index:3;
+                  opacity:0;
                 `
               }
               laneEls?.[note.lane]?.appendChild(el)
+              if (!config.mode3d) {
+                requestAnimationFrame(() => {
+                  el.style.transition = 'opacity 0.15s ease-out'
+                  el.style.opacity = '1'
+                })
+              }
               note.el = el
             }
             note.el.style.bottom = yFromBottom + 'px'
+            if (config.mode3d) {
+              const brightness = Math.max(0.28, 1 - (yFromBottom - RECEPTOR_BOTTOM) / 750)
+              note.el.style.filter = `brightness(${brightness.toFixed(2)})`
+            }
           } else {
             if (note.el) { note.el.remove(); note.el = null }
           }
@@ -2771,6 +2896,8 @@ export default function App() {
   const [screen,          setScreen]         = useState('setup')   // setup | game | results | catalog
   const [gameConfig,      setGameConfig]      = useState(null)
   const [gameStats,       setGameStats]       = useState(null)
+  const [importedChart,   setImportedChart]   = useState(null)
+  const [setupKey,        setSetupKey]        = useState(0)
   const [showSettings,    setShowSettings]    = useState(false)
   const [showLeaderboard, setShowLeaderboard] = useState(false)
   const [showPublish,     setShowPublish]     = useState(false)
@@ -2814,16 +2941,18 @@ export default function App() {
 
   const handlePreviewFromCatalog = (song) => {
     const offset = song.duration ? Math.max(0, song.duration / 2 - 7.5) : 10
+    const us = loadSettings()
     setGameConfig({
       audioUrl:    song.audioUrl,
       songTitle:   song.title,
       bpm:         song.bpm,
       subdivision: song.subdivision,
-      speed:       song.speed,
+      speed:       us.speed || 2.0,
       chart:       song.chart,
       keybinds, laneColors, sfxVolume, musicVolume,
       autoplay:    true,
       scrollDown,
+      mode3d:      us.mode3d || false,
       audioStartOffset: offset,
       previewDuration:  15000,
     })
@@ -2833,18 +2962,33 @@ export default function App() {
   const handlePlayFromCatalog = (song, autoplay = false) => {
     // Increment play count (best-effort, non-blocking)
     import('./supabase.js').then(({ incrementPlays }) => incrementPlays(song.id)).catch(() => {})
+    const us = loadSettings()
     setGameConfig({
       audioUrl:    song.audioUrl,
       songTitle:   song.title,
       bpm:         song.bpm,
       subdivision: song.subdivision,
-      speed:       song.speed,
+      speed:       us.speed || 2.0,
       chart:       song.chart,
       keybinds, laneColors, sfxVolume, musicVolume,
       autoplay,
       scrollDown,
+      mode3d:      us.mode3d || false,
     })
     setScreen('game')
+  }
+
+  const handleEditFromCatalog = (song) => {
+    const sub = song.subdivision || 1
+    setImportedChart({
+      title:       song.title,
+      bpm:         song.bpm,
+      subdivision: sub,
+      beats:       Math.round((song.chart?.length || DEFAULT_BEATS) / sub),
+      chart:       song.chart,
+    })
+    setSetupKey(k => k + 1)
+    setScreen('setup')
   }
 
   return (
@@ -2864,6 +3008,8 @@ export default function App() {
       <div key={screen} style={{ flex: 1, overflow: 'hidden', animation: 'screenIn 0.18s ease-out' }}>
         {screen === 'setup' && (
           <SetupPanel
+            key={setupKey}
+            initialChart={importedChart}
             keybinds={keybinds}
             laneColors={laneColors}
             musicVolume={musicVolume}
@@ -2887,6 +3033,7 @@ export default function App() {
             onBack={() => setScreen('setup')}
             onPlay={handlePlayFromCatalog}
             onPreview={handlePreviewFromCatalog}
+            onEdit={handleEditFromCatalog}
           />
         )}
       </div>
