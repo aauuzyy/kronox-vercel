@@ -442,7 +442,10 @@ function CalibrationModal({ onClose }) {
 
   const stopTapping = useCallback(() => {
     clearTimeout(timerRef.current)
-    ctxRef.current?.close()
+    if (ctxRef.current && ctxRef.current.state !== 'closed') {
+      ctxRef.current.close()
+    }
+    ctxRef.current = null
   }, [])
 
   useEffect(() => () => stopTapping(), [stopTapping])
@@ -1403,13 +1406,17 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       try {
         const data = JSON.parse(ev.target.result)
         if (!data.chart || !Array.isArray(data.chart)) throw new Error('bad')
+        const sub = Number(data.subdivision) || 1
+        // Derive beats from the actual chart length so the resize effect
+        // never trims notes or changes difficulty after import
+        const derivedBeats = Math.ceil(data.chart.length / sub)
         if (data.title)       setSongTitle(data.title)
         if (data.bpm)         setBpm(Number(data.bpm))
         if (data.speed)       setSpeed(Number(data.speed))
-        if (data.subdivision) setSubdivision(Number(data.subdivision))
-        if (data.beats && isFinite(Number(data.beats))) setBeats(Number(data.beats))
+        setSubdivision(sub)
+        setBeats(derivedBeats)
         setChart(data.chart)
-        saveSettings({ chart: data.chart, songTitle: data.title, bpm: Number(data.bpm) || 120, speed: Number(data.speed) || 2.0, subdivision: Number(data.subdivision) || 1, beats: Number(data.beats) || DEFAULT_BEATS })
+        saveSettings({ chart: data.chart, songTitle: data.title, bpm: Number(data.bpm) || 120, speed: Number(data.speed) || 2.0, subdivision: sub, beats: derivedBeats })
       } catch { alert('Invalid .kronox.json file') }
     }
     reader.readAsText(f)
@@ -1473,7 +1480,13 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       audioRef.current.playbackRate = 1.0
       setIsSlowMode(false)
     }
-    recordChartRef.current = buildChart(beats * subdivision)
+    // Always size chart from actual audio duration so notes never get cut off.
+    // Falls back to beats*subdivision if duration isn't available yet.
+    const audioDur = audioRef.current.duration
+    const chartSteps = isFinite(audioDur) && audioDur > 0
+      ? Math.ceil(audioDur * bpm * subdivision / 60) + subdivision * 4  // +4 beat buffer
+      : beats * subdivision
+    recordChartRef.current = buildChart(chartSteps)
     recordKeyDownRef.current = {}
     setRecordChart(null)
     setRecordCountdown(3)
@@ -1500,9 +1513,19 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     isRecPausedRef.current = false
     setRecResumeCountdown(null)
     if (audioRef.current) { audioRef.current.playbackRate = 1.0; audioRef.current.pause() }
-    if (recordChartRef.current) setRecordChart(recordChartRef.current)
+    if (recordChartRef.current) {
+      const recorded = recordChartRef.current
+      // Trim trailing empty rows so the chart doesn't have dead space at the end
+      let lastNote = recorded.length - 1
+      while (lastNote > 0 && recorded[lastNote].every(c => c === 0)) lastNote--
+      const trimmed = recorded.slice(0, lastNote + 1)
+      // Sync beats state to match recorded chart length so the editor is consistent
+      const newBeats = Math.ceil(trimmed.length / subdivision)
+      setBeats(newBeats)
+      setRecordChart(trimmed)
+    }
     recordKeyDownRef.current = {}
-  }, [])
+  }, [subdivision])
 
   const recordTouchDown = useCallback((lane) => {
     if (!isRecording || !recordChartRef.current) return
@@ -1965,7 +1988,7 @@ function GameView({ config, onStop }) {
       .then(buf => ctx.decodeAudioData(buf))
       .then(decoded => { sfxBufRef.current = decoded })
       .catch(() => {})
-    return () => { ctx.close() }
+    return () => { if (ctx.state !== 'closed') ctx.close() }
   }, [])
 
   // ── Beat-reactive background via AnalyserNode ─────────────────────────────
@@ -1986,7 +2009,7 @@ function GameView({ config, onStop }) {
   const playHitSfx = useCallback(() => {
     const ctx = sfxCtxRef.current
     const buf = sfxBufRef.current
-    if (!ctx || !buf) return
+    if (!ctx || !buf || ctx.state === 'closed') return
     const src  = ctx.createBufferSource()
     src.buffer = buf
     const gain = ctx.createGain()
@@ -2558,6 +2581,9 @@ function GameView({ config, onStop }) {
 
       {/* Stage */}
       <div ref={stageRef} style={{ position: 'relative', flex: 1, overflow: 'hidden', background: '#080808' }}>
+
+        {/* Top fade — softens notes entering the playfield instead of hard clipping */}
+        <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 80, background: 'linear-gradient(to bottom, #080808 0%, transparent 100%)', pointerEvents: 'none', zIndex: 20 }} />
 
         {/* Star field background */}
         <canvas ref={starCanvasRef} style={{
