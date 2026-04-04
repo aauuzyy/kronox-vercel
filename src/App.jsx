@@ -1433,12 +1433,34 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
 
   // ── Record mode ───────────────────────────────────────────────────────────
   const HOLD_THRESHOLD_MS = 200
-  const [isRecording,     setIsRecording]     = useState(false)
+  const [isRecording,       setIsRecording]       = useState(false)
+  const [isRecPaused,       setIsRecPaused]       = useState(false)
+  const [recResumeCountdown, setRecResumeCountdown] = useState(null)
+  const isRecPausedRef = useRef(false)
   const [recordCountdown, setRecordCountdown] = useState(null)
   const recordChartRef   = useRef(null)
   const [recordChart, setRecordChart] = useState(null)
   const [recLanePressed, setRecLanePressed] = useState([false, false, false, false])
   const recordKeyDownRef = useRef({})
+
+  // Sync isRecPaused into a ref so the keydown handler (closed over stale state) can read it
+  useEffect(() => { isRecPausedRef.current = isRecPaused }, [isRecPaused])
+
+  // Recording resume countdown: 3 → 2 → 1 → null → actually resume
+  useEffect(() => {
+    if (recResumeCountdown === null) return
+    if (recResumeCountdown > 1) {
+      const t = setTimeout(() => setRecResumeCountdown(c => c - 1), 800)
+      return () => clearTimeout(t)
+    }
+    const t = setTimeout(() => {
+      setRecResumeCountdown(null)
+      isRecPausedRef.current = false
+      setIsRecPaused(false)
+      audioRef.current?.play().catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+  }, [recResumeCountdown])
 
   const startRecording = () => {
     if (!songFile || !audioRef.current) return
@@ -1474,6 +1496,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const stopRecording = useCallback(() => {
     setIsRecording(false)
     setIsSlowMode(false)
+    setIsRecPaused(false)
+    isRecPausedRef.current = false
+    setRecResumeCountdown(null)
     if (audioRef.current) { audioRef.current.playbackRate = 1.0; audioRef.current.pause() }
     if (recordChartRef.current) setRecordChart(recordChartRef.current)
     recordKeyDownRef.current = {}
@@ -1505,7 +1530,24 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   useEffect(() => {
     if (!isRecording) return
     const subdivMs = (60000 / bpm) / subdivision
+    const handleSpacePause = e => {
+      if (e.code !== 'Space' || e.repeat) return
+      e.preventDefault()
+      if (!isRecording) return
+      if (!isRecPausedRef.current) {
+        // Pause
+        isRecPausedRef.current = true
+        setIsRecPaused(true)
+        if (audioRef.current) audioRef.current.pause()
+      } else {
+        // Already paused — start countdown to unpause
+        setRecResumeCountdown(3)
+      }
+    }
+    window.addEventListener('keydown', handleSpacePause)
+
     const handleDown = e => {
+      if (isRecPausedRef.current) return
       if (e.repeat) return
       const lane = keybinds.indexOf(e.key); if (lane === -1) return
       e.preventDefault()
@@ -1514,6 +1556,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
     }
     const handleUp = e => {
+      if (isRecPausedRef.current) return
       const lane = keybinds.indexOf(e.key); if (lane === -1) return
       e.preventDefault()
       const info = recordKeyDownRef.current[lane]; if (!info) return
@@ -1541,11 +1584,12 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     window.addEventListener('keydown', handleSlowKey)
     const audio = audioRef.current; audio?.addEventListener('ended', stopRecording)
     return () => {
+      window.removeEventListener('keydown', handleSpacePause)
       window.removeEventListener('keydown', handleDown); window.removeEventListener('keyup', handleUp)
       window.removeEventListener('keydown', handleSlowKey)
       audio?.removeEventListener('ended', stopRecording)
     }
-  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed, slowModeEnabled])
+  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed, slowModeEnabled, isRecPausedRef])
 
   const applyRecordedChart   = () => { if (!recordChart) return; undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
   const discardRecordedChart = () => setRecordChart(null)
@@ -1753,13 +1797,18 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           )}
           {isRecording && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ background: '#1a1a1a', border: '1px solid #ff4d8f44', borderRadius: 6, padding: '16px', display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff4d8f', animation: 'recPulse 0.8s ease-in-out infinite' }} />
-                <style>{`@keyframes recPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}`}</style>
+              <div style={{ position: 'relative', background: '#1a1a1a', border: `1px solid ${isRecPaused ? '#ffd93d44' : '#ff4d8f44'}`, borderRadius: 6, padding: '16px', display: 'flex', alignItems: 'center', gap: 12, overflow: 'hidden' }}>
+                {isRecPaused
+                  ? <div style={{ width: 10, height: 10, borderRadius: 2, background: '#ffd93d', flexShrink: 0 }} />
+                  : <><div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff4d8f', animation: 'recPulse 0.8s ease-in-out infinite', flexShrink: 0 }} />
+                    <style>{`@keyframes recPulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:0.4;transform:scale(0.7)}}`}</style></>}
                 <div>
-                  <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#ff4d8f', letterSpacing: 2, fontWeight: 'bold' }}>RECORDING</div>
-                  <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#888', marginTop: 2 }}>{Math.floor(previewPos)}s — tap or hold {keybinds.map(k => keyLabel(k)).join(', ')}</div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 9, color: isRecPaused ? '#ffd93d' : '#ff4d8f', letterSpacing: 2, fontWeight: 'bold' }}>{isRecPaused ? 'PAUSED' : 'RECORDING'}</div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#888', marginTop: 2 }}>
+                    {isRecPaused ? 'Press SPACE to resume' : `${Math.floor(previewPos)}s — tap or hold ${keybinds.map(k => keyLabel(k)).join(', ')}`}
+                  </div>
                 </div>
+                {recResumeCountdown !== null && <CountdownOverlay count={recResumeCountdown} />}
               </div>
               {window.innerWidth >= 600 && <LiveKeyDisplay keys={keybinds} keyLabels={keybinds.map(k => keyLabel(k))} names={LANE_NAMES} colors={activeLaneColors} />}
               {window.innerWidth < 600 && (
@@ -1904,6 +1953,7 @@ function GameView({ config, onStop }) {
   const [judgment,        setJudgment]        = useState({ text: '', color: '#fff', visible: false, key: 0 })
   const [receptorPressed, setReceptorPressed] = useState([false, false, false, false])
   const [paused,          setPaused]          = useState(false)
+  const [resumeCountdown, setResumeCountdown] = useState(null)
   const [comboFlash,      setComboFlash]      = useState(false)
 
   // ── Hit SFX via Web Audio (allows gain > 1 to be louder than music) ───────
@@ -2100,11 +2150,47 @@ function GameView({ config, onStop }) {
     updateHud(); showJudge(text, color)
   }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx])
 
+  // Resume countdown effect: 3 → 2 → 1 → null → actually resume
+  useEffect(() => {
+    if (resumeCountdown === null) return
+    if (resumeCountdown > 1) {
+      const t = setTimeout(() => setResumeCountdown(c => c - 1), 800)
+      return () => clearTimeout(t)
+    }
+    const t = setTimeout(() => {
+      setResumeCountdown(null)
+      const s = stateRef.current
+      s.paused = false
+      setPaused(false)
+      audioRef.current?.play().catch(() => {})
+    }, 800)
+    return () => clearTimeout(t)
+  }, [resumeCountdown])
+
   const togglePause = useCallback(() => {
-    const s = stateRef.current; s.paused = !s.paused; setPaused(s.paused)
-    if (s.paused) audioRef.current?.pause()
-    else          audioRef.current?.play().catch(() => {})
+    const s = stateRef.current
+    if (!s.paused) {
+      // Pause immediately
+      s.paused = true; setPaused(true)
+      audioRef.current?.pause()
+      setResumeCountdown(null) // cancel any in-progress resume
+    } else {
+      // Unpause — kick off 3-2-1 countdown
+      setResumeCountdown(3)
+    }
   }, [])
+
+  // Spacebar toggles pause during gameplay
+  useEffect(() => {
+    const handler = e => {
+      if (e.code !== 'Space' || e.repeat) return
+      if (!gameStartedRef.current) return
+      e.preventDefault()
+      togglePause()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [togglePause])
 
   useEffect(() => {
     // Set up audio — countdown effect will trigger play
@@ -2657,9 +2743,13 @@ function GameView({ config, onStop }) {
         {/* Pause overlay */}
         {paused && (
           <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.62)', zIndex: 40 }}>
-            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', letterSpacing: 6, fontWeight: 'bold' }}>PAUSED</div>
+            {resumeCountdown === null
+              ? <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', letterSpacing: 6, fontWeight: 'bold' }}>PAUSED</div>
+              : null}
           </div>
         )}
+        {/* Resume countdown overlay (shown on top of pause overlay) */}
+        {resumeCountdown !== null && <CountdownOverlay count={resumeCountdown} />}
 
         {/* Autoplay badge */}
         {config.autoplay && !paused && (
