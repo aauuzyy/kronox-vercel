@@ -149,7 +149,7 @@ function TitleBarBtn({ onClick, children, active }) {
 }
 
 // ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
-function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, scrollDown, onChange, onClose }) {
+function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, onChange, onClose }) {
   const [keys,      setKeys]      = useState([...keybinds])
   const [listening, setListening] = useState(null)
   const [conflict,  setConflict]  = useState(null)
@@ -295,6 +295,15 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
             >{showStars ? 'ON' : 'OFF'}</button>
           </div>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Star color</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 22, height: 22, borderRadius: 4, background: starColor, border: '1px solid #333', flexShrink: 0 }} />
+              <input type="color" value={starColor}
+                onChange={e => onChange({ starColor: e.target.value })}
+                style={{ width: 28, height: 22, padding: 0, border: 'none', borderRadius: 4, cursor: 'pointer', background: 'transparent' }} />
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Scroll direction</span>
             <button
               onClick={() => onChange({ scrollDown: !scrollDown })}
@@ -304,6 +313,15 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
                 background: 'transparent', border: '1px solid #333', color: '#666',
               }}
             >{scrollDown ? '▼ DOWN' : '▲ UP'}</button>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#888' }}>Column flash</span>
+              <span style={{ fontFamily: 'monospace', fontSize: 9, color: '#555' }}>{Math.round(flashOpacity * 100)}%</span>
+            </div>
+            <input type="range" min={0} max={1} step={0.01} value={flashOpacity}
+              onChange={e => onChange({ flashOpacity: parseFloat(e.target.value) })}
+              style={{ width: '100%', accentColor: '#fff' }} />
           </div>
         </div>
 
@@ -1972,8 +1990,10 @@ function GameView({ config, onStop }) {
 
   const flashLane = useCallback(laneEl => {
     if (!laneEl) return
+    const op = loadSettings().flashOpacity ?? 0.13
+    if (op === 0) return
     const flash = document.createElement('div')
-    flash.style.cssText = `position:absolute;inset:0;background:#ffffff;opacity:0.13;pointer-events:none;z-index:5;transition:opacity 0.25s;`
+    flash.style.cssText = `position:absolute;inset:0;background:#ffffff;opacity:${op};pointer-events:none;z-index:5;transition:opacity 0.25s;`
     laneEl.appendChild(flash)
     requestAnimationFrame(() => requestAnimationFrame(() => { flash.style.opacity = '0' }))
     setTimeout(() => flash.remove(), 300)
@@ -2201,10 +2221,11 @@ function GameView({ config, onStop }) {
             const glowBlur = beat * 20 * twinkle  // NO glow without music
             const dotR     = st.r + beat * 2.5 * twinkle
             ctx2d.save()
-            ctx2d.shadowColor = `rgba(255,255,255,${beat * 0.9})`
+            const sc = loadSettings().starColor || '#ffffff'
+            ctx2d.shadowColor = sc + Math.round(beat * 0.9 * 255).toString(16).padStart(2, '0')
             ctx2d.shadowBlur  = glowBlur
             ctx2d.globalAlpha = alpha
-            ctx2d.fillStyle   = '#ffffff'
+            ctx2d.fillStyle   = sc
             ctx2d.beginPath()
             ctx2d.arc(st.x, st.y, dotR, 0, Math.PI * 2)
             ctx2d.fill()
@@ -2910,17 +2931,21 @@ export default function App() {
   const [laneColors,  setLaneColors]  = useState(Array.isArray(saved.laneColors) && saved.laneColors.length === 4 ? saved.laneColors : [...LANE_COLORS])
   const [sfxVolume,   setSfxVolume]   = useState(saved.sfxVolume   ?? 0.7)
   const [musicVolume, setMusicVolume] = useState(saved.musicVolume ?? 1.0)
-  const [showStars,   setShowStars]   = useState(saved.showStars   !== false)
-  const [scrollDown,  setScrollDown]  = useState(saved.scrollDown  !== false)
+  const [showStars,    setShowStars]    = useState(saved.showStars   !== false)
+  const [scrollDown,   setScrollDown]   = useState(saved.scrollDown  !== false)
+  const [starColor,    setStarColor]    = useState(saved.starColor    || '#ffffff')
+  const [flashOpacity, setFlashOpacity] = useState(saved.flashOpacity ?? 0.13)
 
   const handleSettingsChange = patch => {
     const next = { ...loadSettings(), ...patch }
-    if (patch.keybinds)    setKeybinds(patch.keybinds)
-    if (patch.laneColors)  setLaneColors(patch.laneColors)
-    if (patch.sfxVolume   !== undefined) setSfxVolume(patch.sfxVolume)
-    if (patch.musicVolume !== undefined) setMusicVolume(patch.musicVolume)
-    if (patch.showStars   !== undefined) setShowStars(patch.showStars)
-    if (patch.scrollDown  !== undefined) setScrollDown(patch.scrollDown)
+    if (patch.keybinds)       setKeybinds(patch.keybinds)
+    if (patch.laneColors)     setLaneColors(patch.laneColors)
+    if (patch.sfxVolume      !== undefined) setSfxVolume(patch.sfxVolume)
+    if (patch.musicVolume    !== undefined) setMusicVolume(patch.musicVolume)
+    if (patch.showStars      !== undefined) setShowStars(patch.showStars)
+    if (patch.scrollDown     !== undefined) setScrollDown(patch.scrollDown)
+    if (patch.starColor      !== undefined) setStarColor(patch.starColor)
+    if (patch.flashOpacity   !== undefined) setFlashOpacity(patch.flashOpacity)
     localStorage.setItem('kronox-settings', JSON.stringify(next))
   }
 
@@ -3046,6 +3071,8 @@ export default function App() {
         musicVolume={musicVolume}
         showStars={showStars}
         scrollDown={scrollDown}
+        starColor={starColor}
+        flashOpacity={flashOpacity}
         onChange={handleSettingsChange}
         onClose={() => setShowSettings(false)}
       />
