@@ -417,70 +417,84 @@ function HistoryModal({ onClose }) {
 function CalibrationModal({ onClose }) {
   const BPM         = 80
   const BEAT_MS     = 60000 / BPM
-  const [phase,     setPhase]     = useState('intro')   // intro | tapping | result
+  const [phase,     setPhase]     = useState('intro')
   const [taps,      setTaps]      = useState([])
   const [suggested, setSuggested] = useState(null)
-  const ctxRef      = useRef(null)
-  const startRef    = useRef(null)
-  const nextBeatRef = useRef(0)
-  const timerRef    = useRef(null)
+  const [manualOffset, setManualOffset] = useState(() => {
+    const s = JSON.parse(localStorage.getItem('kronox-settings') || '{}')
+    return s.audioOffset || 0
+  })
+  const ctxRef    = useRef(null)
+  const startRef  = useRef(null)
+  const timerRef  = useRef(null)
+  const tapsRef   = useRef([])
 
-  // Generate metronome click via Web Audio
+  const saveOffset = (val) => {
+    const s = JSON.parse(localStorage.getItem('kronox-settings') || '{}')
+    localStorage.setItem('kronox-settings', JSON.stringify({ ...s, audioOffset: val }))
+  }
+
   const playClick = useCallback((ctx, when, accent = false) => {
     const osc  = ctx.createOscillator()
     const gain = ctx.createGain()
     osc.connect(gain); gain.connect(ctx.destination)
     osc.frequency.value = accent ? 1200 : 800
-    gain.gain.setValueAtTime(0.5, when)
-    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.06)
-    osc.start(when); osc.stop(when + 0.07)
+    gain.gain.setValueAtTime(0.6, when)
+    gain.gain.exponentialRampToValueAtTime(0.001, when + 0.05)
+    osc.start(when); osc.stop(when + 0.06)
+  }, [])
+
+  const stopTapping = useCallback(() => {
+    clearTimeout(timerRef.current)
+    if (ctxRef.current && ctxRef.current.state !== 'closed') ctxRef.current.close()
+    ctxRef.current = null
   }, [])
 
   const startTapping = useCallback(() => {
     const ctx = new AudioContext()
-    ctxRef.current  = ctx
+    ctxRef.current   = ctx
     startRef.current = ctx.currentTime
+    tapsRef.current  = []
     setPhase('tapping'); setTaps([])
-    let beat = 0
-    const schedule = () => {
-      const when = startRef.current + beat * (BEAT_MS / 1000)
-      playClick(ctx, when, beat % 4 === 0)
-      nextBeatRef.current = when
-      beat++
-      timerRef.current = setTimeout(schedule, BEAT_MS - 30)
+    // Pre-schedule all 10 clicks (2 warmup + 8 to tap)
+    for (let i = 0; i < 10; i++) {
+      playClick(ctx, startRef.current + i * (BEAT_MS / 1000), i % 4 === 0)
     }
-    schedule()
-  }, [playClick, BEAT_MS])
-
-  const stopTapping = useCallback(() => {
-    clearTimeout(timerRef.current)
-    if (ctxRef.current && ctxRef.current.state !== 'closed') {
-      ctxRef.current.close()
-    }
-    ctxRef.current = null
-  }, [])
+    // Auto-stop after 10 beats + a grace period
+    timerRef.current = setTimeout(() => stopTapping(), BEAT_MS * 11)
+  }, [playClick, BEAT_MS, stopTapping])
 
   useEffect(() => () => stopTapping(), [stopTapping])
 
   const handleTap = useCallback(() => {
     if (phase !== 'tapping' || !ctxRef.current) return
-    const ctx      = ctxRef.current
-    const tapMs    = (ctx.currentTime - startRef.current) * 1000
-    const beatN    = Math.round(tapMs / BEAT_MS)
-    const idealMs  = beatN * BEAT_MS
-    const offsetMs = tapMs - idealMs
-    setTaps(prev => {
-      const next = [...prev, { tapMs, offsetMs }]
-      if (next.length >= 8) {
-        stopTapping()
-        const avg = Math.round(next.slice(-6).reduce((s, t) => s + t.offsetMs, 0) / 6)
-        setSuggested(avg)
-        setPhase('result')
-        const saved = JSON.parse(localStorage.getItem('kronox-settings') || '{}')
-        localStorage.setItem('kronox-settings', JSON.stringify({ ...saved, audioOffset: avg }))
-      }
-      return next
-    })
+    const ctx   = ctxRef.current
+    // outputLatency: how long after scheduling the sound is actually heard
+    const latency = (ctx.outputLatency || ctx.baseLatency || 0) * 1000
+    const tapMs = (ctx.currentTime - startRef.current) * 1000 - latency
+
+    // Skip first 2 taps (warmup), collect next 8
+    const beatN   = Math.round(tapMs / BEAT_MS)
+    const idealMs = beatN * BEAT_MS
+    const err     = tapMs - idealMs
+
+    const next = [...tapsRef.current, { tapMs, err, beatN }]
+    tapsRef.current = next
+    // Only count taps after beat 2 (warmup)
+    const valid = next.filter(t => t.beatN >= 2)
+    setTaps(valid)
+
+    if (valid.length >= 8) {
+      stopTapping()
+      // Use median of errors for accuracy (discard outliers)
+      const errs = valid.map(t => t.err).sort((a, b) => a - b)
+      const mid  = Math.floor(errs.length / 2)
+      const median = errs.length % 2 === 0 ? Math.round((errs[mid-1] + errs[mid]) / 2) : Math.round(errs[mid])
+      setSuggested(median)
+      setManualOffset(median)
+      saveOffset(median)
+      setPhase('result')
+    }
   }, [phase, BEAT_MS, stopTapping])
 
   useEffect(() => {
@@ -490,19 +504,43 @@ function CalibrationModal({ onClose }) {
     return () => window.removeEventListener('keydown', handler)
   }, [phase, handleTap])
 
+  const adjustManual = (delta) => {
+    const next = manualOffset + delta
+    setManualOffset(next)
+    saveOffset(next)
+  }
+
+  const btnStyle = (col = '#333', bg = 'transparent') => ({
+    fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0',
+    borderRadius: 6, background: bg, color: col, border: `1px solid ${col}44`, cursor: 'pointer',
+  })
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#0f0f0f', border: '1px solid #222', borderRadius: 12, width: 480, padding: '32px', display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
+      <div style={{ background: '#0f0f0f', border: '1px solid #222', borderRadius: 12, width: 480, maxWidth: '95vw', padding: '32px', display: 'flex', flexDirection: 'column', gap: 20, boxShadow: '0 24px 64px rgba(0,0,0,0.7)' }}>
         <div>
           <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#333', letterSpacing: 4, marginBottom: 6 }}>HIT TIMING TOOL</div>
           <div style={{ fontFamily: 'Arial', fontSize: 18, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>CALIBRATE</div>
         </div>
 
+        {/* Manual offset always visible */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#111', border: '1px solid #1e1e1e', borderRadius: 8, padding: '12px 16px' }}>
+          <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#444', letterSpacing: 3, flex: 1 }}>CURRENT OFFSET</div>
+          <button onClick={() => adjustManual(-5)} style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>−5</button>
+          <button onClick={() => adjustManual(-1)} style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>−1</button>
+          <div style={{ fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', color: manualOffset === 0 ? '#66ff99' : '#fff', minWidth: 70, textAlign: 'center' }}>
+            {manualOffset > 0 ? '+' : ''}{manualOffset}<span style={{ fontSize: 10, color: '#555', marginLeft: 3 }}>ms</span>
+          </div>
+          <button onClick={() => adjustManual(1)}  style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>+1</button>
+          <button onClick={() => adjustManual(5)}  style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>+5</button>
+          <button onClick={() => { setManualOffset(0); saveOffset(0) }} style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 1, padding: '6px 10px', borderRadius: 4, background: 'transparent', color: '#ff6666', border: '1px solid #ff666633', cursor: 'pointer' }}>RESET</button>
+        </div>
+
         {phase === 'intro' && (
           <>
             <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#444', lineHeight: 1.8 }}>
-              A metronome will play at 80 BPM. {window.innerWidth < 600 ? 'Tap the button' : <>Press <strong style={{ color: '#888' }}>SPACE</strong></>} on every beat (8 times). KRONOX will measure your natural offset and apply it automatically.
+              A metronome plays at 80 BPM. Tap on every beat for 8 beats (2 warmup beats first). KRONOX measures your offset using the median of your taps and applies it automatically.
             </div>
             <button onClick={startTapping}
               style={{ fontFamily: 'Arial', fontSize: 11, letterSpacing: 2, fontWeight: 'bold', padding: '14px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', cursor: 'pointer' }}>
@@ -522,23 +560,12 @@ function CalibrationModal({ onClose }) {
                 <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: i < taps.length ? '#fff' : '#1e1e1e', transition: 'background 0.1s' }} />
               ))}
             </div>
-            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#444', textAlign: 'center' }}>{window.innerWidth < 600 ? 'Tap the button on every beat...' : 'Tap SPACE on every beat...'}</div>
-            {window.innerWidth >= 600 && (
-              <button
-                onPointerDown={e => { e.preventDefault(); handleTap() }}
-                style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none' }}>
-                TAP
-              </button>
-            )}
-            {window.innerWidth < 600 && (
-              <button
-                onPointerDown={e => { e.preventDefault(); handleTap() }}
-                style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
-                TAP
-              </button>
-            )}
-            <button onClick={() => { stopTapping(); setPhase('intro'); setTaps([]) }}
-              style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '10px 0', borderRadius: 6, background: 'transparent', color: '#444', border: '1px solid #222', cursor: 'pointer' }}>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#555', textAlign: 'center' }}>First 2 beats are warmup — start tapping on beat 1...</div>
+            <button onPointerDown={e => { e.preventDefault(); handleTap() }}
+              style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
+              TAP
+            </button>
+            <button onClick={() => { stopTapping(); setPhase('intro'); setTaps([]) }} style={btnStyle('#444')}>
               CANCEL
             </button>
           </>
@@ -547,22 +574,17 @@ function CalibrationModal({ onClose }) {
         {phase === 'result' && (
           <>
             <div style={{ textAlign: 'center', display: 'flex', flexDirection: 'column', gap: 8 }}>
-              <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', letterSpacing: 3 }}>SUGGESTED OFFSET</div>
-              <div style={{ fontFamily: 'Arial', fontSize: 52, fontWeight: 'bold', color: suggested === 0 ? '#66ff99' : '#fff', lineHeight: 1 }}>{suggested > 0 ? '+' : ''}{suggested}<span style={{ fontSize: 14, color: '#555 ', marginLeft: 4 }}>ms</span></div>
-              <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#333' }}>
+              <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', letterSpacing: 3 }}>MEASURED OFFSET</div>
+              <div style={{ fontFamily: 'Arial', fontSize: 52, fontWeight: 'bold', color: suggested === 0 ? '#66ff99' : '#fff', lineHeight: 1 }}>
+                {suggested > 0 ? '+' : ''}{suggested}<span style={{ fontSize: 14, color: '#555', marginLeft: 4 }}>ms</span>
+              </div>
+              <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#444' }}>
                 {Math.abs(suggested) < 10 ? 'Perfect — no adjustment needed!' : suggested > 0 ? 'You tap early. Offset applied.' : 'You tap late. Offset applied.'}
               </div>
             </div>
-            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#333', textAlign: 'center' }}>Offset saved to settings automatically.</div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setPhase('intro'); setTaps([]) }}
-                style={{ flex: 1, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: 'transparent', color: '#666', border: '1px solid #222', cursor: 'pointer' }}>
-                REDO
-              </button>
-              <button onClick={onClose}
-                style={{ flex: 2, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
-                DONE
-              </button>
+              <button onClick={() => { setPhase('intro'); setTaps([]) }} style={{ ...btnStyle('#666'), flex: 1 }}>REDO</button>
+              <button onClick={onClose} style={{ flex: 2, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>DONE</button>
             </div>
           </>
         )}
@@ -573,7 +595,7 @@ function CalibrationModal({ onClose }) {
   )
 }
 
-// ─── Leaderboard Modal ────────────────────────────────────────────────────────
+
 const LB_RANK_COLORS = ['#ffd700', '#c0c0c0', '#cd7f32']
 const LB_MEDALS      = ['🥇', '🥈', '🥉']
 
@@ -2088,6 +2110,7 @@ function GameView({ config, onStop }) {
   const starsRef         = useRef(null)
   const beatIntensityRef = useRef(0)
   const beatBaseRef      = useRef(0)  // long-term RMS average for onset detection
+  const audioOffsetRef   = useRef(loadSettings().audioOffset || 0)
   const stateRef = useRef({
     activeNotes: [], score: 0, combo: 0, multiplier: 1, health: 80,
     paused: false, completedBeats: new Set(),
@@ -2279,9 +2302,8 @@ function GameView({ config, onStop }) {
     const s = stateRef.current
     const held = s.heldNotes[lane]; if (!held) return
     const { note, startMs, holdDurationMs } = held
-    const nowMs = audioRef.current ? audioRef.current.currentTime * 1000 : 0
+    const nowMs = (audioRef.current ? audioRef.current.currentTime * 1000 : 0) - audioOffsetRef.current
     const frac = Math.min(1, (nowMs - startMs) / holdDurationMs)
-    delete s.heldNotes[lane]
     note.trailEl?.remove(); note.trailEl = null
     note.hit = true
     s.completedBeats.add(`${note.beat}-${note.lane}`)
@@ -2299,8 +2321,7 @@ function GameView({ config, onStop }) {
   const hitNote = useCallback(lane => {
     const s = stateRef.current
     const audio = audioRef.current; if (!audio) return
-    const nowMs = audio.currentTime * 1000
-    const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [80, 125, 165, 200]
+    const nowMs = audio.currentTime * 1000 - audioOffsetRef.current = config.mode3d ? [110, 140, 180, 231] : [80, 125, 165, 200]
     const wMiss = config.mode3d ? 280 : 240  // tapping outside catch window within this range = MISS
 
     let closest = null, minDist = Infinity
@@ -2432,7 +2453,7 @@ function GameView({ config, onStop }) {
     const loop = () => {
       if (!s.paused && gameStartedRef.current) {
         const nowSec    = audio.currentTime
-        const nowMs     = nowSec * 1000
+        const nowMs     = nowSec * 1000 - audioOffsetRef.current
         const futureIdx = Math.floor((nowSec + LOOKAHEAD_MS / 1000) / subdivSec)
         const laneEls   = stageRef.current?.querySelectorAll('.fnf-lane')
 
