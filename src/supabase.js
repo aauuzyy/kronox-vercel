@@ -136,6 +136,16 @@ export async function fetchGlobalLeaderboard() {
 }
 
 /**
+ * Update only the display name for a player row (best-effort, no-op if row doesn't exist yet).
+ */
+export async function updatePlayerDisplayName(guestId, displayName) {
+  try {
+    const sb = getClient()
+    await sb.from('players').update({ display_name: displayName }).eq('id', guestId)
+  } catch { /* best-effort */ }
+}
+
+/**
  * Toggle like on a chart. Returns true if now liked, false if unliked.
  * Calls toggle_like RPC — see supabase-players-likes.sql.
  */

@@ -19,7 +19,12 @@ function getDisplayName() {
   return localStorage.getItem('kronox-display-name') || GUEST_ID
 }
 function saveDisplayName(name) {
-  localStorage.setItem('kronox-display-name', name.trim() || GUEST_ID)
+  const resolved = name.trim() || GUEST_ID
+  localStorage.setItem('kronox-display-name', resolved)
+  // Sync to global leaderboard immediately (best-effort)
+  import('./supabase.js').then(({ updatePlayerDisplayName }) =>
+    updatePlayerDisplayName(GUEST_ID, resolved)
+  ).catch(() => {})
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -879,7 +884,7 @@ function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
   const [search,  setSearch]  = useState('')
-  const [sortBy,  setSortBy]  = useState('newest')
+  const [sortBy,  setSortBy]  = useState('difficulty')
   const [myLikes, setMyLikes] = useState(new Set())
   const [likingId, setLikingId] = useState(null)
 
@@ -912,7 +917,14 @@ function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
     !search ||
     (s.title   || '').toLowerCase().includes(search.toLowerCase()) ||
     (s.creator || '').toLowerCase().includes(search.toLowerCase())
-  )
+  ).sort((a, b) => {
+    if (sortBy === 'difficulty') {
+      const da = a.chart ? calcDifficulty(a.chart, a.bpm, a.subdivision) : 0
+      const db = b.chart ? calcDifficulty(b.chart, b.bpm, b.subdivision) : 0
+      return db - da
+    }
+    return 0 // server already sorted for newest/plays/likes
+  })
 
   const fmtDur = sec => sec
     ? `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
@@ -936,7 +948,7 @@ function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
           style={{ flex: 1, fontFamily: 'Arial', fontSize: 12, color: '#fff', padding: '9px 12px', borderRadius: 5, background: '#111', border: '1px solid #2a2a2a', outline: 'none' }}
           onFocus={e => e.target.style.borderColor = '#444'}
           onBlur={e => e.target.style.borderColor = '#2a2a2a'} />
-        {[['newest', 'NEWEST'], ['plays', 'POPULAR'], ['likes', 'FEATURED']].map(([val, lbl]) => (
+        {[['difficulty', 'DIFFICULTY'], ['newest', 'NEWEST'], ['plays', 'POPULAR'], ['likes', 'FEATURED']].map(([val, lbl]) => (
           <button key={val} onClick={() => setSortBy(val)}
             style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${sortBy === val ? '#444' : '#222'}`, background: sortBy === val ? '#222' : 'transparent', color: sortBy === val ? '#fff' : '#444', cursor: 'pointer', transition: 'all 0.12s' }}>
             {lbl}
@@ -2194,7 +2206,7 @@ function GameView({ config, onStop }) {
     for (const n of s.activeNotes) {
       if (n.lane !== lane || n.hit) continue
       const d = Math.abs(n.hitTimeMs - nowMs)
-      if (d < minDist && d < 200) { minDist = d; closest = n }
+      if (d < minDist && d < 300) { minDist = d; closest = n }
     }
     if (!closest) return
     const laneEl = getLaneEl(lane)
@@ -2217,9 +2229,9 @@ function GameView({ config, onStop }) {
 
     let pts, text, color
     const signedOffset = nowMs - closest.hitTimeMs
-    if (minDist < 50)       { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
-    else if (minDist < 100) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
-    else if (minDist < 200) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
+    if (minDist < 150)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
+    else if (minDist < 200) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
+    else if (minDist < 300) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
     else                    { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
 
     s.score += pts * s.multiplier

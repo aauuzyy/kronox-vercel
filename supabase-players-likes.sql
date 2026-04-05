@@ -26,14 +26,14 @@ CREATE POLICY "players_upsert" ON players FOR ALL    USING (true) WITH CHECK (tr
 -- RPC: atomically add one game result to a player row
 CREATE OR REPLACE FUNCTION add_player_result(
   p_id           text,
-  p_display_name text,
-  p_score        bigint,
-  p_accuracy     integer,
-  p_grade        text,
-  p_perfect      bigint,
-  p_good         bigint,
-  p_bad          bigint,
-  p_miss         bigint
+  p_display_name text DEFAULT '',
+  p_score        bigint  DEFAULT 0,
+  p_accuracy     integer DEFAULT 0,
+  p_grade        text    DEFAULT 'C',
+  p_perfect      bigint  DEFAULT 0,
+  p_good         bigint  DEFAULT 0,
+  p_bad          bigint  DEFAULT 0,
+  p_miss         bigint  DEFAULT 0
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
   grade_rank jsonb := '{"S+":5,"S":4,"A":3,"B":2,"C":1}';
@@ -67,6 +67,8 @@ CREATE TABLE IF NOT EXISTS likes (
 );
 
 ALTER TABLE likes ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "likes_read"  ON likes;
+DROP POLICY IF EXISTS "likes_write" ON likes;
 CREATE POLICY "likes_read"   ON likes FOR SELECT USING (true);
 CREATE POLICY "likes_write"  ON likes FOR ALL    USING (true) WITH CHECK (true);
 
