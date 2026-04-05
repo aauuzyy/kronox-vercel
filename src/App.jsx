@@ -428,6 +428,9 @@ function CalibrationModal({ onClose }) {
   const startRef  = useRef(null)
   const timerRef  = useRef(null)
   const tapsRef   = useRef([])
+  const phaseRef  = useRef('intro')  // mirrors phase state — avoids stale closures in callbacks
+
+  const setPhaseSync = (p) => { phaseRef.current = p; setPhase(p) }
 
   const saveOffset = (val) => {
     const s = JSON.parse(localStorage.getItem('kronox-settings') || '{}')
@@ -450,63 +453,57 @@ function CalibrationModal({ onClose }) {
     ctxRef.current = null
   }, [])
 
+  // collectResult: compute median from collected taps and go to result
+  const collectResult = useCallback((validTaps) => {
+    stopTapping()
+    if (validTaps.length >= 2) {
+      const errs   = validTaps.map(t => t.err).sort((a, b) => a - b)
+      const mid    = Math.floor(errs.length / 2)
+      const median = errs.length % 2 === 0 ? Math.round((errs[mid-1] + errs[mid]) / 2) : Math.round(errs[mid])
+      setSuggested(median); setManualOffset(median); saveOffset(median); setPhaseSync('result')
+    } else {
+      setPhaseSync('intro')
+    }
+  }, [stopTapping])
+
   const startTapping = useCallback(() => {
     const ctx = new AudioContext()
     ctxRef.current   = ctx
     startRef.current = ctx.currentTime
     tapsRef.current  = []
-    setPhase('tapping'); setTaps([])
-    // Pre-schedule all 10 clicks (2 warmup + 8 to tap)
-    for (let i = 0; i < 10; i++) {
+    setPhaseSync('tapping'); setTaps([])
+    // Pre-schedule 12 clicks (2 warmup + 10 to tap — extra beats give buffer)
+    for (let i = 0; i < 12; i++) {
       playClick(ctx, startRef.current + i * (BEAT_MS / 1000), i % 4 === 0)
     }
-    // Auto-stop after 10 beats + a grace period
+    // Auto-collect after all beats + grace period
     timerRef.current = setTimeout(() => {
       const valid = tapsRef.current.filter(t => t.beatN >= 2)
-      stopTapping()
-      if (valid.length >= 4) {
-        const errs   = valid.map(t => t.err).sort((a, b) => a - b)
-        const mid    = Math.floor(errs.length / 2)
-        const median = errs.length % 2 === 0 ? Math.round((errs[mid-1] + errs[mid]) / 2) : Math.round(errs[mid])
-        setSuggested(median); setManualOffset(median); saveOffset(median); setPhase('result')
-      } else {
-        setPhase('intro')
-      }
-    }, BEAT_MS * 11)
-  }, [playClick, BEAT_MS, stopTapping])
+      collectResult(valid)
+    }, BEAT_MS * 14)
+  }, [playClick, BEAT_MS, collectResult])
 
   useEffect(() => () => stopTapping(), [stopTapping])
 
   const handleTap = useCallback(() => {
-    if (phase !== 'tapping' || !ctxRef.current) return
+    // Use phaseRef (not phase state) to avoid stale closure issues
+    if (phaseRef.current !== 'tapping' || !ctxRef.current) return
     const ctx   = ctxRef.current
-    // outputLatency: how long after scheduling the sound is actually heard
     const latency = (ctx.outputLatency || ctx.baseLatency || 0) * 1000
     const tapMs = (ctx.currentTime - startRef.current) * 1000 - latency
 
-    // Skip first 2 taps (warmup), collect next 8
     const beatN   = Math.round(tapMs / BEAT_MS)
     const idealMs = beatN * BEAT_MS
     const err     = tapMs - idealMs
 
     const next = [...tapsRef.current, { tapMs, err, beatN }]
     tapsRef.current = next
-    // Only count taps after beat 2 (warmup)
     const valid = next.filter(t => t.beatN >= 2)
     setTaps(valid)
 
-    if (valid.length >= 8) {
-      stopTapping()
-      // Use median of errors for accuracy (discard outliers)
-      const errs = valid.map(t => t.err).sort((a, b) => a - b)
-      const mid  = Math.floor(errs.length / 2)
-      const median = errs.length % 2 === 0 ? Math.round((errs[mid-1] + errs[mid]) / 2) : Math.round(errs[mid])
-      setSuggested(median)
-      setManualOffset(median)
-      saveOffset(median)
-      setPhase('result')
-    }
-  }, [phase, BEAT_MS, stopTapping])
+    // Auto-collect at 6 valid taps
+    if (valid.length >= 6) collectResult(valid)
+  }, [BEAT_MS, collectResult])
 
   useEffect(() => {
     if (phase !== 'tapping') return
@@ -564,21 +561,29 @@ function CalibrationModal({ onClose }) {
           <>
             <div style={{ textAlign: 'center' }}>
               <div style={{ fontFamily: 'Arial', fontSize: 48, fontWeight: 'bold', color: '#fff', lineHeight: 1 }}>{taps.length}</div>
-              <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#333', letterSpacing: 3, marginTop: 6 }}>TAPS OF 8</div>
+              <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#333', letterSpacing: 3, marginTop: 6 }}>TAPS COLLECTED</div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
-              {Array.from({ length: 8 }, (_, i) => (
+              {Array.from({ length: 6 }, (_, i) => (
                 <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: i < taps.length ? '#fff' : '#1e1e1e', transition: 'background 0.1s' }} />
               ))}
             </div>
-            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#555', textAlign: 'center' }}>Beats 1–2 are warmup — start tapping on beat 3 and keep going to the end</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#555', textAlign: 'center' }}>2 warmup beats, then tap on every click until it stops</div>
             <button onPointerDown={e => { e.preventDefault(); handleTap() }}
               style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
               TAP
             </button>
-            <button onClick={() => { stopTapping(); setPhase('intro'); setTaps([]) }} style={btnStyle('#444')}>
-              CANCEL
-            </button>
+            <div style={{ display: 'flex', gap: 10 }}>
+              {taps.length >= 3 && (
+                <button onClick={() => collectResult(taps)}
+                  style={{ flex: 2, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
+                  COLLECT ({taps.length} TAPS)
+                </button>
+              )}
+              <button onClick={() => { stopTapping(); setPhaseSync('intro'); setTaps([]) }} style={{ ...btnStyle('#444'), flex: 1 }}>
+                CANCEL
+              </button>
+            </div>
           </>
         )}
 
@@ -594,7 +599,7 @@ function CalibrationModal({ onClose }) {
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button onClick={() => { setPhase('intro'); setTaps([]) }} style={{ ...btnStyle('#666'), flex: 1 }}>REDO</button>
+              <button onClick={() => { setPhaseSync('intro'); setTaps([]) }} style={{ ...btnStyle('#666'), flex: 1 }}>REDO</button>
               <button onClick={onClose} style={{ flex: 2, fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, padding: '11px 0', borderRadius: 6, background: '#fff', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>DONE</button>
             </div>
           </>
