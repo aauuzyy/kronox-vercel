@@ -2219,6 +2219,11 @@ function GameView({ config, onStop }) {
       return
     }
 
+    // Ghost tap: note still approaching and tap is outside PERFECT window — ignore, let it arrive
+    const signedOffset = nowMs - closest.hitTimeMs
+    const [wP, wG, wB] = config.mode3d ? [150, 200, 300] : [15, 45, 100]
+    if (signedOffset < 0 && minDist >= wP) return
+
     closest.el?.remove(); closest.el = null
     closest.hit = true
     s.completedBeats.add(`${closest.beat}-${closest.lane}`)
@@ -2228,8 +2233,6 @@ function GameView({ config, onStop }) {
     playHitSfx()
 
     let pts, text, color
-    const signedOffset = nowMs - closest.hitTimeMs
-    const [wP, wG, wB] = config.mode3d ? [150, 200, 300] : [15, 45, 100]
     if (minDist < wP)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
     else if (minDist < wG) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
     else if (minDist < wB) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
