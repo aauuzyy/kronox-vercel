@@ -2056,6 +2056,25 @@ function LiveKeyDisplay({ keys, keyLabels, names, colors }) {
   )
 }
 
+// ── Linear perspective projection for 3D mode ───────────────────────────────
+// Matches CSS: perspective:650px, perspectiveOrigin:50% 88%, rotateX(30deg) at bottom
+function project3dNote(yFromBottom, lane, stageW, stageH, LANE_W, LANE_GAP, TOTAL_W) {
+  const F        = 650                    // focal length == CSS perspective
+  const camYt    = stageH * 0.88         // camera Y from top == perspectiveOrigin Y
+  const rot      = 30 * Math.PI / 180    // fretboard tilt == rotateX angle
+  // World position of note on the tilted plane (pivot = bottom of stage)
+  const worldYt  = stageH - yFromBottom * Math.cos(rot)  // Y from top in world space
+  const worldZ   = yFromBottom * Math.sin(rot)            // depth into screen (positive = away)
+  // Perspective scale: further = smaller
+  const scale    = F / (F + worldZ)
+  // Project onto screen
+  const screenY  = camYt + (worldYt - camYt) * scale
+  const fretLeft = stageW / 2 - (TOTAL_W + LANE_GAP * 2) / 2
+  const laneCX   = fretLeft + LANE_GAP + lane * (LANE_W + LANE_GAP) + LANE_W / 2
+  const screenX  = stageW / 2 + (laneCX - stageW / 2) * scale
+  return { screenX, screenY, scale }
+}
+
 // ─── GameView ─────────────────────────────────────────────────────────────────
 function GameView({ config, onStop }) {
   const stageRef    = useRef(null)
@@ -2258,40 +2277,27 @@ function GameView({ config, onStop }) {
     const [wP, wG, wB] = config.mode3d ? [60, 150, 300] : [15, 45, 100]
     const wMiss = config.mode3d ? 600 : 300  // tapping outside catch window within this range = MISS
 
-    // Per-lane tap cooldown: prevent spam-tapping from hitting next note immediately after a miss
-    if (!s.laneTapTime) s.laneTapTime = {}
-    const lastTap = s.laneTapTime[lane] || 0
-    if (nowMs - lastTap < 140) return  // 140ms cooldown per lane
-    s.laneTapTime[lane] = nowMs
-
-    // Helper: note-clone explosion in lane-local coords — appended inside the lane el so it
-    // participates in 3D perspective automatically (no 2D/3D coordinate conversion needed)
+    // Helper: note-clone explosion — uses correct coord system per mode
     const spawnPhantom = (note) => {
+      const noteColor = laneColors[note.lane]
+      const y = note.yFromBottom ?? RECEPTOR_BOTTOM
       const lEl = getLaneEl(note.lane)
       if (!lEl) return
-      const noteColor = laneColors[note.lane]
       const ph = document.createElement('div')
-      const phantomY = (note.yFromBottom ?? RECEPTOR_BOTTOM) - (config.mode3d ? 10 : 0)
       ph.style.cssText = `
         position:absolute;
-        left:50%;
-        bottom:${phantomY}px;
-        transform:translateX(-50%) scale(1);
-        transform-origin:50% 50%;
-        width:${NOTE_SIZE}px;
-        height:${NOTE_SIZE}px;
-        border-radius:50%;
-        background:${noteColor};
+        left:50%; bottom:${y}px;
+        transform:translateX(-50%) scale(1); transform-origin:50% 50%;
+        width:${NOTE_SIZE}px; height:${NOTE_SIZE}px;
+        border-radius:50%; background:${noteColor};
         box-shadow:0 0 10px ${noteColor}55;
-        opacity:0.88;
-        pointer-events:none;
-        z-index:20;
+        opacity:0.88; pointer-events:none; z-index:20;
         transition:transform 100ms ease-out, opacity 100ms ease-out;
       `
       lEl.appendChild(ph)
-      ph.getBoundingClientRect()  // force layout flush so transition fires from scale(1)
+      ph.getBoundingClientRect()
       ph.style.transform = 'translateX(-50%) scale(1.9)'
-      ph.style.opacity = '0'
+      ph.style.opacity   = '0'
       setTimeout(() => ph.remove(), 120)
     }
 
@@ -2560,65 +2566,31 @@ function GameView({ config, onStop }) {
             if (!note.el) {
               const el = document.createElement('div')
               el.className = 'fnf-note'
-              if (config.mode3d) {
-                const D     = NOTE_SIZE
-                const r     = D / 2
-                const capRY = Math.round(r * 1.14)
-                const bodyH = Math.round(D * 0.20)
-                const sw    = 3
-                const pad   = sw + 2
-                const svgW  = D + pad * 2
-                const svgH  = 2 * (pad + capRY)
-                const cx    = svgW / 2
-                const capCY = pad + capRY
-                el.style.cssText = `
-                  position:absolute;
-                  left:50%;
-                  transform:translateX(-50%);
-                  width:${svgW}px;
-                  height:${svgH}px;
-                  pointer-events:none;
-                  z-index:3;
-                `
-                el.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}">
-                  <rect x="${pad}" y="${capCY}" width="${D}" height="${bodyH}" fill="${noteColor}"/>
-                  <ellipse cx="${cx}" cy="${capCY}" rx="${r}" ry="${capRY}" fill="${noteColor}" stroke="#999" stroke-width="${sw}"/>
-                </svg>`
-              } else {
-                el.style.cssText = `
-                  position:absolute;
-                  left:50%;
-                  transform:translateX(-50%);
-                  width:${NOTE_SIZE}px;
-                  height:${NOTE_SIZE}px;
-                  border-radius:50%;
-                  background:${noteColor};
-                  box-shadow:0 0 10px ${noteColor}55;
-                  pointer-events:none;
-                  z-index:3;
-                  opacity:0;
-                `
-              }
+              el.style.cssText = `
+                position:absolute;
+                left:50%;
+                transform:translateX(-50%);
+                width:${NOTE_SIZE}px;
+                height:${NOTE_SIZE}px;
+                border-radius:50%;
+                background:${noteColor};
+                box-shadow:0 0 10px ${noteColor}55;
+                pointer-events:none;
+                z-index:3;
+                opacity:0;
+              `
               laneEls?.[note.lane]?.appendChild(el)
-              if (!config.mode3d) {
-                requestAnimationFrame(() => {
-                  el.style.transition = 'opacity 0.15s ease-out'
-                  el.style.opacity = '1'
-                })
-              }
+              requestAnimationFrame(() => {
+                el.style.transition = 'opacity 0.15s ease-out'
+                el.style.opacity = '1'
+              })
               note.el = el
             }
-            // In 3D, shift note down 10px so the SVG cap centre aligns with the receptor circle centre
-            note.el.style.bottom = (yFromBottom - (config.mode3d ? 10 : 0)) + 'px'
-            // Fade out as note scrolls past receptor
+            note.el.style.bottom = yFromBottom + 'px'
             const lateness = nowMs - note.hitTimeMs
             if (lateness > 0) {
               note.el.style.transition = 'none'
               note.el.style.opacity = Math.max(0, 1 - lateness / (config.mode3d ? 300 : 100)).toFixed(2)
-            }
-            if (config.mode3d) {
-              const brightness = Math.max(0.28, 1 - Math.max(0, yFromBottom - RECEPTOR_BOTTOM) / 750)
-              note.el.style.filter = `brightness(${brightness.toFixed(2)})`
             }
           } else {
             if (note.el) { note.el.remove(); note.el = null }
@@ -2629,33 +2601,19 @@ function GameView({ config, onStop }) {
             if (!note.trailEl) {
               const tr = document.createElement('div')
               tr.className = 'fnf-hold-trail'
-              if (config.mode3d) {
-                tr.style.cssText = `
-                  position:absolute;
-                  left:50%;
-                  transform:translateX(-50%);
-                  width:${NOTE_SIZE}px;
-                  border-radius:${NOTE_SIZE / 2}px;
-                  background:${noteColor}88;
-                  pointer-events:none;
-                  z-index:1;
-                `
-              } else {
-                tr.style.cssText = `
-                  position:absolute;
-                  left:50%;
-                  transform:translateX(-50%);
-                  width:${NOTE_SIZE}px;
-                  border-radius:${NOTE_SIZE / 2}px;
-                  background:${noteColor}55;
-                  pointer-events:none;
-                  z-index:1;
-                `
-              }
+              tr.style.cssText = `
+                position:absolute;
+                left:50%;
+                transform:translateX(-50%);
+                width:${NOTE_SIZE}px;
+                border-radius:${NOTE_SIZE / 2}px;
+                background:${noteColor}55;
+                pointer-events:none;
+                z-index:1;
+              `
               laneEls?.[note.lane]?.appendChild(tr)
               note.trailEl = tr
             }
-
             if (isBeingHeld) {
               const held      = s.heldNotes[note.lane]
               const remaining = Math.max(0, held.holdDurationMs - (nowMs - held.startMs))
@@ -2776,16 +2734,16 @@ function GameView({ config, onStop }) {
           // ── Guitar Hero 3D perspective highway ──────────────────────────
           <div style={{
             position: 'absolute', inset: 0,
-            perspective: '1800px',
-            perspectiveOrigin: '50% -10%',
+            perspective: '700px',
+            perspectiveOrigin: '50% 5%',
             overflow: 'hidden',
           }}>
             {/* Fretboard plane */}
             <div style={{
               position: 'absolute', bottom: 0, left: '50%',
               width: TOTAL_W + LANE_GAP * 2,
-              height: '500%',
-              transform: 'translateX(-50%) rotateX(68deg)',
+              height: '800%',
+              transform: 'translateX(-50%) rotateX(70deg)',
               transformOrigin: '50% 100%',
               transformStyle: 'preserve-3d',
               display: 'flex', gap: LANE_GAP,
