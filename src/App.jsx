@@ -461,7 +461,18 @@ function CalibrationModal({ onClose }) {
       playClick(ctx, startRef.current + i * (BEAT_MS / 1000), i % 4 === 0)
     }
     // Auto-stop after 10 beats + a grace period
-    timerRef.current = setTimeout(() => stopTapping(), BEAT_MS * 11)
+    timerRef.current = setTimeout(() => {
+      const valid = tapsRef.current.filter(t => t.beatN >= 2)
+      stopTapping()
+      if (valid.length >= 4) {
+        const errs   = valid.map(t => t.err).sort((a, b) => a - b)
+        const mid    = Math.floor(errs.length / 2)
+        const median = errs.length % 2 === 0 ? Math.round((errs[mid-1] + errs[mid]) / 2) : Math.round(errs[mid])
+        setSuggested(median); setManualOffset(median); saveOffset(median); setPhase('result')
+      } else {
+        setPhase('intro')
+      }
+    }, BEAT_MS * 11)
   }, [playClick, BEAT_MS, stopTapping])
 
   useEffect(() => () => stopTapping(), [stopTapping])
@@ -560,7 +571,7 @@ function CalibrationModal({ onClose }) {
                 <div key={i} style={{ width: 10, height: 10, borderRadius: '50%', background: i < taps.length ? '#fff' : '#1e1e1e', transition: 'background 0.1s' }} />
               ))}
             </div>
-            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#555', textAlign: 'center' }}>First 2 beats are warmup — start tapping on beat 1...</div>
+            <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#555', textAlign: 'center' }}>Beats 1–2 are warmup — start tapping on beat 3 and keep going to the end</div>
             <button onPointerDown={e => { e.preventDefault(); handleTap() }}
               style={{ fontFamily: 'Arial', fontSize: 13, letterSpacing: 2, fontWeight: 'bold', padding: '28px 0', borderRadius: 8, background: '#fff', color: '#111', border: 'none', cursor: 'pointer', userSelect: 'none', WebkitUserSelect: 'none', touchAction: 'none' }}>
               TAP
@@ -2111,6 +2122,9 @@ function GameView({ config, onStop }) {
   const beatIntensityRef = useRef(0)
   const beatBaseRef      = useRef(0)  // long-term RMS average for onset detection
   const audioOffsetRef   = useRef(loadSettings().audioOffset || 0)
+  const laneElsRef      = useRef(null)
+  const tDataRef        = useRef(null)
+  const starSettingsRef = useRef({ color: '#ffffff', enabled: true })
   const stateRef = useRef({
     activeNotes: [], score: 0, combo: 0, multiplier: 1, health: 80,
     paused: false, completedBeats: new Set(),
@@ -2321,8 +2335,9 @@ function GameView({ config, onStop }) {
   const hitNote = useCallback(lane => {
     const s = stateRef.current
     const audio = audioRef.current; if (!audio) return
-    const nowMs = audio.currentTime * 1000 - audioOffsetRef.current = config.mode3d ? [110, 140, 180, 231] : [80, 125, 165, 200]
-    const wMiss = config.mode3d ? 280 : 240  // tapping outside catch window within this range = MISS
+    const nowMs = audio.currentTime * 1000 - audioOffsetRef.current
+    const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [45, 80, 115, 150]
+    const wMiss = config.mode3d ? 280 : 180  // tapping outside catch window within this range = MISS
 
     let closest = null, minDist = Infinity
     for (const n of s.activeNotes) {
@@ -2447,19 +2462,23 @@ function GameView({ config, onStop }) {
     const s           = stateRef.current
     s.activeNotes = []; s.score = 0; s.combo = 0; s.health = 80
     s.completedBeats = new Set(); s.heldNotes = {}
+    laneElsRef.current = stageRef.current?.querySelectorAll('.fnf-lane')
+    const initSS = loadSettings()
+    starSettingsRef.current = { color: initSS.starColor || '#ffffff', enabled: initSS.showStars !== false }
 
     const LOOKAHEAD_MS = 2200
 
+    let progressThrottle = 0
     const loop = () => {
       if (!s.paused && gameStartedRef.current) {
         const nowSec    = audio.currentTime
         const nowMs     = nowSec * 1000 - audioOffsetRef.current
         const futureIdx = Math.floor((nowSec + LOOKAHEAD_MS / 1000) / subdivSec)
-        const laneEls   = stageRef.current?.querySelectorAll('.fnf-lane')
+        const laneEls   = laneElsRef.current
 
         // ── Star field + beat-reactive glow ───────────────────────────────
         const canvas = starCanvasRef.current
-        const starsEnabled = loadSettings().showStars !== false
+        const starsEnabled = starSettingsRef.current.enabled
         if (canvas && starsEnabled) {
           const W = canvas.offsetWidth || canvas.width || 800
           const H = canvas.offsetHeight || canvas.height || 600
@@ -2501,7 +2520,9 @@ function GameView({ config, onStop }) {
           // Sample audio for beat intensity (onset detection — relative to running average)
           let beat = 0
           if (analyserRef.current) {
-            const tData = new Uint8Array(analyserRef.current.fftSize)
+            if (!tDataRef.current || tDataRef.current.length !== analyserRef.current.fftSize)
+              tDataRef.current = new Uint8Array(analyserRef.current.fftSize)
+            const tData = tDataRef.current
             analyserRef.current.getByteTimeDomainData(tData)
             let sum = 0
             for (let i = 0; i < tData.length; i++) { const v = (tData[i]-128)/128; sum += v*v }
@@ -2525,6 +2546,7 @@ function GameView({ config, onStop }) {
           const ctx2d = canvas.getContext('2d')
           ctx2d.clearRect(0, 0, canvas.width, canvas.height)
           const nowT = performance.now() / 1000
+          const sc = starSettingsRef.current.color
 
           for (let i = 0; i < starsRef.current.length; i++) {
             const st = starsRef.current[i]
@@ -2540,7 +2562,6 @@ function GameView({ config, onStop }) {
             const glowBlur = beat * 20 * twinkle  // NO glow without music
             const dotR     = st.r + beat * 2.5 * twinkle
             ctx2d.save()
-            const sc = loadSettings().starColor || '#ffffff'
             ctx2d.shadowColor = sc + Math.round(beat * 0.9 * 255).toString(16).padStart(2, '0')
             ctx2d.shadowBlur  = glowBlur
             ctx2d.globalAlpha = alpha
@@ -2690,10 +2711,11 @@ function GameView({ config, onStop }) {
 
         s.activeNotes = s.activeNotes.filter(n => !n.hit)
       }
+      if (++progressThrottle % 10 === 0)
+        setAudioProgress({ current: audio.currentTime, duration: audio.duration || 0 })
       rafRef.current = requestAnimationFrame(loop)
     }
-    // update timeline every frame
-    setAudioProgress({ current: audio.currentTime, duration: audio.duration || 0 })
+    setAudioProgress({ current: 0, duration: audio.duration || 0 })
     rafRef.current = requestAnimationFrame(loop)
 
     const onKey = e => {
