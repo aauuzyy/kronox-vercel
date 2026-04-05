@@ -2090,7 +2090,7 @@ function GameView({ config, onStop }) {
   const stateRef = useRef({
     activeNotes: [], score: 0, combo: 0, multiplier: 1, health: 80,
     paused: false, completedBeats: new Set(),
-    perfect: 0, good: 0, bad: 0, miss: 0, totalHits: 0,
+    perfect: 0, good: 0, okay: 0, bad: 0, miss: 0, totalHits: 0,
     heldNotes: {},
     hitOffsets: [],
   })
@@ -2103,7 +2103,7 @@ function GameView({ config, onStop }) {
   const laneColors = config.laneColors || LANE_COLORS
 
   const isMobile = window.innerWidth < 600
-  const LANE_W          = isMobile ? Math.floor((window.innerWidth - 24) / 4) : 90
+  const LANE_W          = isMobile ? Math.floor((window.innerWidth - 24) / 4) : (config.mode3d ? 108 : 90)
   const LANE_GAP        = isMobile ? 4 : 8
   const NOTE_SIZE       = isMobile ? Math.round(LANE_W * 0.82) : 74
   const TOTAL_W         = LANE_W * 4 + LANE_GAP * 3
@@ -2223,9 +2223,9 @@ function GameView({ config, onStop }) {
     if (audioRef.current) { audioRef.current.onended = null; audioRef.current.pause() }
     stageRef.current?.querySelectorAll('.fnf-note,.fnf-hold-trail').forEach(n => n.remove())
     const s = stateRef.current
-    const accuracy = s.totalHits > 0 ? Math.round(((s.perfect * 100 + s.good * 90 + s.bad * 70) / (s.totalHits * 100)) * 100) : 0
+    const accuracy = s.totalHits > 0 ? Math.round(((s.perfect * 100 + s.good * 90 + s.okay * 80 + s.bad * 70) / (s.totalHits * 100)) * 100) : 0
     onStop('complete', {
-      score: s.score, perfect: s.perfect, good: s.good, bad: s.bad,
+      score: s.score, perfect: s.perfect, good: s.good, okay: s.okay, bad: s.bad,
       miss: s.miss, totalHits: s.totalHits, accuracy,
       duration: audioRef.current?.duration || 0, songTitle: config.songTitle,
       hitOffsets: [...s.hitOffsets],
@@ -2265,8 +2265,9 @@ function GameView({ config, onStop }) {
     s.combo++; s.totalHits++
     const laneEl = getLaneEl(lane)
     if (frac >= 0.99)     { s.score += 350 * 2 * s.multiplier; s.perfect++; s.health = Math.min(100, s.health + 5); showJudge('PERFECT', '#ffffff'); flashLane(laneEl) }
-    else if (frac >= 0.5) { s.score += 200 * s.multiplier;     s.good++;    s.health = Math.min(100, s.health + 3); showJudge('GOOD', '#aaaaaa');    flashLane(laneEl) }
-    else                  { s.score += 100 * s.multiplier;     s.bad++;     s.health = Math.min(100, s.health + 1); showJudge('BAD', '#555555') }
+    else if (frac >= 0.67) { s.score += 200 * s.multiplier;    s.good++;    s.health = Math.min(100, s.health + 3); showJudge('GOOD', '#aaaaaa');    flashLane(laneEl) }
+    else if (frac >= 0.33) { s.score += 150 * s.multiplier;    s.okay++;    s.health = Math.min(100, s.health + 1); showJudge('OKAY', '#aaaa44') }
+    else                   { s.score += 100 * s.multiplier;    s.bad++;                                            showJudge('BAD', '#555555') }
     updateHud()
   }, [showJudge, updateHud, getLaneEl, flashLane])
 
@@ -2274,7 +2275,7 @@ function GameView({ config, onStop }) {
     const s = stateRef.current
     const audio = audioRef.current; if (!audio) return
     const nowMs = audio.currentTime * 1000
-    const [wP, wG, wB] = config.mode3d ? [60, 150, 300] : [15, 45, 100]
+    const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [80, 125, 165, 200]
     const wMiss = config.mode3d ? 600 : 300  // tapping outside catch window within this range = MISS
 
     // Helper: note-clone explosion — uses correct coord system per mode
@@ -2336,9 +2337,10 @@ function GameView({ config, onStop }) {
 
     let pts, text, color
     const signedOffset = nowMs - closest.hitTimeMs
-    if (minDist < wP)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
-    else if (minDist < wG) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
-    else                   { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
+    if (minDist < wP)        { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
+    else if (minDist < wG)  { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
+    else if (minDist < wOk) { pts = 150; text = 'OKAY';    color = '#aaaa44'; s.okay++;    s.hitOffsets.push(signedOffset) }
+    else                    { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
 
     // Explosion: note-clone expands and fades at the hit position
     spawnPhantom(closest)
@@ -2742,7 +2744,7 @@ function GameView({ config, onStop }) {
             <div style={{
               position: 'absolute', bottom: 0, left: '50%',
               width: TOTAL_W + LANE_GAP * 2,
-              height: '800%',
+              height: '450%',
               transform: 'translateX(-50%) rotateX(70deg)',
               transformOrigin: '50% 100%',
               transformStyle: 'preserve-3d',
