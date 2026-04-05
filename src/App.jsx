@@ -1685,6 +1685,22 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     recordKeyDownRef.current = {}
   }, [subdivision])
 
+  // writeNote: single source-of-truth for committing a recorded note to the chart.
+  // Using a ref-based write prevents any race where two paths (touch + keyboard)
+  // both see a valid `info` and double-write the same cell.
+  const writeNoteRef = useRef(null)  // not used for storage — just ensures one write path
+  const commitNote = useCallback((lane, info, endMs) => {
+    if (!recordChartRef.current) return
+    const subdivMs  = (60000 / bpm) / subdivision
+    const endCi     = Math.max(0, Math.min(Math.round(endMs / subdivMs), recordChartRef.current.length - 1))
+    const newChart  = recordChartRef.current.map(r => [...r])
+    if (endMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
+      newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
+      for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
+    } else { newChart[info.subdivIdx][lane] = 1 }
+    recordChartRef.current = newChart
+  }, [bpm, subdivision, HOLD_THRESHOLD_MS])
+
   const recordTouchDown = useCallback((lane) => {
     if (!isRecording || !recordChartRef.current) return
     const subdivMs = (60000 / bpm) / subdivision
@@ -1697,20 +1713,12 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     if (!isRecording || !recordChartRef.current) return
     const info = recordKeyDownRef.current[lane]; if (!info) return
     delete recordKeyDownRef.current[lane]
-    const subdivMs = (60000 / bpm) / subdivision
     const nowMs = audioRef.current?.currentTime * 1000 || 0
-    const endCi = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
-    const newChart = recordChartRef.current.map(r => [...r])
-    if (nowMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
-      newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
-      for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
-    } else { newChart[info.subdivIdx][lane] = 1 }
-    recordChartRef.current = newChart
-  }, [isRecording, bpm, subdivision, HOLD_THRESHOLD_MS])
+    commitNote(lane, info, nowMs)
+  }, [isRecording, commitNote])
 
   useEffect(() => {
     if (!isRecording) return
-    const subdivMs = (60000 / bpm) / subdivision
     const handleSpacePause = e => {
       if (e.code !== 'Space' || e.repeat) return
       e.preventDefault()
@@ -1732,8 +1740,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       if (e.repeat) return
       const lane = keybinds.indexOf(e.key); if (lane === -1) return
       e.preventDefault()
-      const nowMs = audioRef.current?.currentTime * 1000 || 0
-      const ci = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
+      const nowMs  = audioRef.current?.currentTime * 1000 || 0
+      const subMs  = (60000 / bpm) / subdivision
+      const ci = Math.max(0, Math.min(Math.round(nowMs / subMs), recordChartRef.current.length - 1))
       recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
     }
     const handleUp = e => {
@@ -1743,13 +1752,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       const info = recordKeyDownRef.current[lane]; if (!info) return
       delete recordKeyDownRef.current[lane]
       const nowMs = audioRef.current?.currentTime * 1000 || 0
-      const endCi = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
-      const newChart = recordChartRef.current.map(r => [...r])
-      if (nowMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
-        newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
-        for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
-      } else { newChart[info.subdivIdx][lane] = 1 }
-      recordChartRef.current = newChart
+      commitNote(lane, info, nowMs)
     }
     const handleSlowKey = e => {
       if (!slowModeEnabled) return
@@ -1770,7 +1773,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       window.removeEventListener('keydown', handleSlowKey)
       audio?.removeEventListener('ended', stopRecording)
     }
-  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed, slowModeEnabled, isRecPausedRef])
+  }, [isRecording, bpm, subdivision, keybinds, stopRecording, slowModeKey, slowModeSpeed, slowModeEnabled, commitNote])
 
   const applyRecordedChart   = () => { if (!recordChart) return; undoRef.current = [...undoRef.current.slice(-49), chart.map(r => [...r])]; redoRef.current = []; setChart(recordChart); saveSettings({ chart: recordChart }); setRecordChart(null); setActiveTab('chart') }
   const discardRecordedChart = () => setRecordChart(null)
