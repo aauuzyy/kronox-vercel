@@ -745,11 +745,43 @@ function PublishModal({ config, onClose }) {
   const [editTitle,   setEditTitle]   = useState(config.songTitle || '')
   const [displayName, setDisplayName] = useState(getDisplayName)
   const [editingName, setEditingName] = useState(false)
+  const [confirmed,   setConfirmed]   = useState(false)
+  const [previewing,  setPreviewing]  = useState(false)
+  const previewAudioRef = useRef(null)
   const nameInputRef = useRef(null)
 
   useEffect(() => {
     if (editingName) nameInputRef.current?.select()
   }, [editingName])
+
+  // Cleanup preview audio on unmount
+  useEffect(() => {
+    return () => {
+      if (previewAudioRef.current) { previewAudioRef.current.pause(); previewAudioRef.current = null }
+    }
+  }, [])
+
+  const handlePreview = () => {
+    if (previewing) {
+      previewAudioRef.current?.pause()
+      previewAudioRef.current = null
+      setPreviewing(false)
+      return
+    }
+    if (!config.songFile) return
+    const url = URL.createObjectURL(config.songFile)
+    const audio = new Audio(url)
+    audio.volume = 0.7
+    audio.currentTime = 0
+    audio.play()
+    previewAudioRef.current = audio
+    setPreviewing(true)
+    audio.addEventListener('ended', () => { setPreviewing(false); previewAudioRef.current = null })
+    // auto-stop after 15s
+    setTimeout(() => {
+      if (previewAudioRef.current === audio) { audio.pause(); setPreviewing(false); previewAudioRef.current = null }
+    }, 15000)
+  }
 
   const commitName = () => {
     const trimmed = displayName.trim() || GUEST_ID
@@ -759,7 +791,7 @@ function PublishModal({ config, onClose }) {
   }
 
   const handlePublish = async () => {
-    if (!editTitle.trim()) return
+    if (!editTitle.trim() || !confirmed) return
     setStatus('publishing'); setErrMsg('')
     try {
       const { publishChart } = await import('./supabase.js')
@@ -819,6 +851,27 @@ function PublishModal({ config, onClose }) {
               ))}
             </div>
 
+            {/* Audio file confirmation */}
+            <div style={{ background: '#111', borderRadius: 5, padding: '12px 14px', border: `1px solid ${confirmed ? '#1a3a1a' : '#2a1a1a'}`, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#444', letterSpacing: 2, marginBottom: 3 }}>AUDIO FILE</div>
+                  <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#888', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{config.songFile?.name || '—'}</div>
+                </div>
+                <button onClick={handlePreview}
+                  style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 1, padding: '7px 12px', borderRadius: 4, background: previewing ? '#1a2a3a' : 'transparent', color: previewing ? '#66aaff' : '#555', border: `1px solid ${previewing ? '#4488ff44' : '#333'}`, cursor: 'pointer', flexShrink: 0 }}>
+                  {previewing ? '■ STOP' : '▷ PREVIEW'}
+                </button>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+                <input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)}
+                  style={{ accentColor: '#66ff99', width: 14, height: 14, cursor: 'pointer' }} />
+                <span style={{ fontFamily: 'Arial', fontSize: 9, color: confirmed ? '#66ff99' : '#555', letterSpacing: 1 }}>
+                  I confirmed the audio matches the chart
+                </span>
+              </label>
+            </div>
+
             <div style={{ padding: '10px 14px', background: '#111', borderRadius: 5, border: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
               <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', letterSpacing: 1, flexShrink: 0 }}>PUBLISHING AS</span>
               {editingName
@@ -837,13 +890,13 @@ function PublishModal({ config, onClose }) {
             {errMsg && <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#ff6666', lineHeight: 1.6 }}>{errMsg}</div>}
 
             <button onClick={handlePublish}
-              disabled={status === 'publishing' || !editTitle.trim()}
+              disabled={status === 'publishing' || !editTitle.trim() || !confirmed}
               style={{
                 fontFamily: 'Arial', fontSize: 10, letterSpacing: 2, padding: '13px 0', borderRadius: 5,
-                background: status === 'publishing' ? '#1e1e1e' : '#fff',
-                color: status === 'publishing' ? '#444' : '#111',
+                background: status === 'publishing' ? '#1e1e1e' : confirmed ? '#fff' : '#1a1a1a',
+                color: status === 'publishing' ? '#444' : confirmed ? '#111' : '#333',
                 border: 'none', fontWeight: 'bold',
-                cursor: status === 'publishing' ? 'wait' : 'pointer',
+                cursor: status === 'publishing' || !confirmed ? 'not-allowed' : 'pointer',
                 transition: 'all 0.18s',
               }}>
               {status === 'publishing' ? 'UPLOADING...' : '↑  PUBLISH TO CATALOG'}
@@ -2202,11 +2255,14 @@ function GameView({ config, onStop }) {
     const s = stateRef.current
     const audio = audioRef.current; if (!audio) return
     const nowMs = audio.currentTime * 1000
+    const [wP, wG, wB] = config.mode3d ? [150, 200, 300] : [15, 45, 100]
     let closest = null, minDist = Infinity
     for (const n of s.activeNotes) {
       if (n.lane !== lane || n.hit) continue
       const d = Math.abs(n.hitTimeMs - nowMs)
-      if (d < minDist && d < (config.mode3d ? 300 : 100)) { minDist = d; closest = n }
+      const isEarly = nowMs < n.hitTimeMs
+      // Early taps only register within GOOD window; late taps within full BAD window
+      if (d < minDist && d < (isEarly ? wG : wB)) { minDist = d; closest = n }
     }
     if (!closest) return
     const laneEl = getLaneEl(lane)
@@ -2219,11 +2275,6 @@ function GameView({ config, onStop }) {
       return
     }
 
-    // Ghost tap: note still approaching and tap is outside PERFECT window — ignore, let it arrive
-    const signedOffset = nowMs - closest.hitTimeMs
-    const [wP, wG, wB] = config.mode3d ? [150, 200, 300] : [15, 45, 100]
-    if (signedOffset < 0 && minDist >= wP) return
-
     closest.el?.remove(); closest.el = null
     closest.hit = true
     s.completedBeats.add(`${closest.beat}-${closest.lane}`)
@@ -2233,6 +2284,7 @@ function GameView({ config, onStop }) {
     playHitSfx()
 
     let pts, text, color
+    const signedOffset = nowMs - closest.hitTimeMs
     if (minDist < wP)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
     else if (minDist < wG) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
     else if (minDist < wB) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
