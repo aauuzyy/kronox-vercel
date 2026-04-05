@@ -161,9 +161,10 @@ function TitleBarBtn({ onClick, children, active }) {
 }
 
 // ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
-function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, flashColor, onChange, onClose }) {
+function SettingsPanel({ open, keybinds, pauseKey, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, flashColor, onChange, onClose }) {
   const [keys,      setKeys]      = useState([...keybinds])
-  const [listening, setListening] = useState(null)
+  const [pKey,      setPKey]      = useState(pauseKey)
+  const [listening, setListening] = useState(null)  // null | 0-3 (lane) | 'pause'
   const [conflict,  setConflict]  = useState(null)
   const [localSpeed, setLocalSpeed] = useState(() => loadSettings().speed || 2.0)
 
@@ -171,13 +172,24 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
   useEffect(() => { if (!open) setListening(null) }, [open])
   // Sync keys if parent keybinds change
   useEffect(() => { setKeys([...keybinds]) }, [keybinds])
+  useEffect(() => { setPKey(pauseKey) }, [pauseKey])
 
   useEffect(() => {
     if (!open || listening === null) return
     const handler = e => {
       e.preventDefault()
+      if (listening === 'pause') {
+        // Pause key can't overlap lane keys
+        if (keys.includes(e.key)) { setConflict('lane'); setTimeout(() => setConflict(null), 1200); return }
+        setPKey(e.key)
+        onChange({ pauseKey: e.key })
+        setListening(null)
+        return
+      }
       const ci = keys.findIndex((k, i) => k === e.key && i !== listening)
       if (ci !== -1) { setConflict(ci); setTimeout(() => setConflict(null), 1200); return }
+      // Pause key can't be used as a lane key either
+      if (e.key === pKey) { setConflict('pause'); setTimeout(() => setConflict(null), 1200); return }
       const newKeys = keys.map((k, i) => i === listening ? e.key : k)
       setKeys(newKeys)
       onChange({ keybinds: newKeys })
@@ -185,7 +197,7 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [listening, keys, open])
+  }, [listening, keys, pKey, open])
 
   const labelKey = k => {
     if (k === ' ') return 'Space'
@@ -360,13 +372,26 @@ function SettingsPanel({ open, keybinds, laneColors, sfxVolume, musicVolume, sho
               </button>
             </div>
           ))}
-          {conflict  !== null && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff6666', letterSpacing: 1 }}>Key already bound to {LANE_NAMES[conflict]}</div>}
-          {listening !== null && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#555',   letterSpacing: 1 }}>Press a key to bind {LANE_NAMES[listening]}</div>}
+          {/* Pause key row */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 4 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: conflict === 'pause' || conflict === 'lane' ? '#ff4444' : '#555', flexShrink: 0, transition: 'background 0.2s' }} />
+              <span style={{ fontFamily: 'Arial', fontSize: 10, color: conflict === 'pause' || conflict === 'lane' ? '#ff8888' : '#555' }}>PAUSE</span>
+            </div>
+            <button onClick={() => setListening(listening === 'pause' ? null : 'pause')}
+              style={{ fontFamily: 'monospace', fontSize: 12, fontWeight: 'bold', minWidth: 50, padding: '5px 10px', borderRadius: 4, background: listening === 'pause' ? 'rgba(255,255,255,0.1)' : '#111', border: `1.5px solid ${listening === 'pause' ? '#fff' : '#222'}`, color: listening === 'pause' ? '#fff' : '#bbb', animation: listening === 'pause' ? 'pulse 0.9s ease-in-out infinite' : 'none', cursor: 'pointer' }}>
+              {listening === 'pause' ? '...' : labelKey(pKey)}
+            </button>
+          </div>
+          {conflict === 'lane'  && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff6666', letterSpacing: 1 }}>Can't overlap a lane key</div>}
+          {conflict === 'pause' && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff6666', letterSpacing: 1 }}>Key already bound to PAUSE</div>}
+          {typeof conflict === 'number' && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#ff6666', letterSpacing: 1 }}>Key already bound to {LANE_NAMES[conflict]}</div>}
+          {listening !== null && <div style={{ fontFamily: 'Arial', fontSize: 8, color: '#555', letterSpacing: 1 }}>Press a key to bind {listening === 'pause' ? 'PAUSE' : LANE_NAMES[listening]}</div>}
         </div>
         <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
           <button onClick={() => { setKeys([...DEFAULT_LANE_KEYS]); setListening(null) }}
             style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '7px 0', flex: 1, borderRadius: 4, background: 'transparent', border: '1px solid #222', color: '#333', cursor: 'pointer' }}>RESET</button>
-          <button onClick={() => onChange({ keybinds: keys })}
+          <button onClick={() => { onChange({ keybinds: keys, pauseKey: pKey }) }}
             style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '7px 0', flex: 2, borderRadius: 4, background: '#fff', border: 'none', color: '#111', fontWeight: 'bold', cursor: 'pointer' }}>SAVE KEYBINDS</button>
         </div>
         <style>{`@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(255,255,255,0.3)}50%{box-shadow:0 0 0 5px rgba(255,255,255,0)}}`}</style>
@@ -2431,8 +2456,10 @@ function GameView({ config, onStop }) {
 
   // Spacebar toggles pause during gameplay
   useEffect(() => {
+    const pauseKey = config.pauseKey || ' '
     const handler = e => {
-      if (e.code !== 'Space' || e.repeat) return
+      const match = pauseKey === ' ' ? e.code === 'Space' : e.key === pauseKey
+      if (!match || e.repeat) return
       if (!gameStartedRef.current) return
       e.preventDefault()
       togglePause()
@@ -2888,39 +2915,48 @@ function GameView({ config, onStop }) {
 
         {/* HUD */}
         <div style={{ position: 'absolute', top: 12, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', padding: '0 20px', pointerEvents: 'none', zIndex: 10 }}>
-          {/* Combo + multiplier ring */}
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 0 }}>
-            {(() => {
-              const ringSize  = 54
-              const r         = 22
-              const circ      = 2 * Math.PI * r
-              const ringPct   = (hud.combo % 50) / 50
-              const offset    = circ * (1 - ringPct)
-              const mult      = hud.multiplier
-              const ringColor = mult >= 5 ? '#cc44ff' : mult >= 4 ? '#ff4466' : mult >= 3 ? '#ff9933' : mult >= 2 ? '#ffd93d' : '#ffffff'
-              return (
-                <div style={{ position: 'relative', width: ringSize, height: ringSize, animation: comboFlash ? 'comboPop 0.12s ease-out' : 'none' }}>
-                  <svg width={ringSize} height={ringSize} style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
-                    <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke="#1a1a1a" strokeWidth="3" />
-                    <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke={ringColor}
-                      strokeWidth="3" strokeLinecap="round"
-                      strokeDasharray={circ} strokeDashoffset={offset}
-                      style={{ transition: 'stroke-dashoffset 0.08s linear, stroke 0.3s' }} />
-                  </svg>
-                  <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 0 }}>
-                    <span style={{ fontFamily: 'Arial', fontSize: 11, color: ringColor, fontWeight: 'bold', lineHeight: 1 }}>{hud.combo}</span>
-                    <span style={{ fontFamily: 'Arial', fontSize: 6, color: ringColor + 'aa', letterSpacing: 1, lineHeight: 1 }}>{mult > 1 ? `${mult}×` : 'CMB'}</span>
-                  </div>
-                </div>
-              )
-            })()}
-          </div>
+          {/* Left spacer (combo moved beside highway) */}
+          <div style={{ width: 54 }} />
           <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#222', letterSpacing: 2, alignSelf: 'center' }}>{config.autoplay ? 'AUTOPLAY' : config.songTitle.toUpperCase()}</div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: 'Arial', fontSize: 6, color: '#3a3a3a', letterSpacing: 2, marginBottom: 2 }}>SCORE</div>
             <div style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', fontWeight: 'bold' }}>{hud.score.toLocaleString()}</div>
           </div>
         </div>
+
+        {/* Combo ring — beside the highway, centered vertically in the play area */}
+        {(() => {
+          const ringSize  = 90
+          const r         = 36
+          const circ      = 2 * Math.PI * r
+          const ringPct   = (hud.combo % 50) / 50
+          const offset    = circ * (1 - ringPct)
+          const mult      = hud.multiplier
+          const ringColor = mult >= 5 ? '#cc44ff' : mult >= 4 ? '#ff4466' : mult >= 3 ? '#ff9933' : mult >= 2 ? '#ffd93d' : '#ffffff'
+          return (
+            <div style={{
+              position: 'absolute',
+              left: `calc(50% - ${TOTAL_W / 2 + ringSize + 18}px)`,
+              top: '50%', transform: 'translateY(-50%)',
+              pointerEvents: 'none', zIndex: 10,
+              animation: comboFlash ? 'comboPop 0.12s ease-out' : 'none',
+            }}>
+              <div style={{ position: 'relative', width: ringSize, height: ringSize }}>
+                <svg width={ringSize} height={ringSize} style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
+                  <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke="#1a1a1a" strokeWidth="4" />
+                  <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke={ringColor}
+                    strokeWidth="4" strokeLinecap="round"
+                    strokeDasharray={circ} strokeDashoffset={offset}
+                    style={{ transition: 'stroke-dashoffset 0.08s linear, stroke 0.3s' }} />
+                </svg>
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 2 }}>
+                  <span style={{ fontFamily: 'Arial', fontSize: 22, color: ringColor, fontWeight: 'bold', lineHeight: 1 }}>{hud.combo}</span>
+                  <span style={{ fontFamily: 'Arial', fontSize: 8, color: ringColor + 'aa', letterSpacing: 2, lineHeight: 1 }}>{mult > 1 ? `${mult}×` : 'COMBO'}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
 
         {/* Song progress bar */}
         {audioProgress.duration > 0 && (() => {
@@ -3255,6 +3291,7 @@ export default function App() {
   const [starColor,    setStarColor]    = useState(saved.starColor    || '#ffffff')
   const [flashOpacity, setFlashOpacity] = useState(saved.flashOpacity ?? 0.13)
   const [flashColor,   setFlashColor]   = useState(saved.flashColor   || '#ffffff')
+  const [pauseKey,     setPauseKey]     = useState(saved.pauseKey     || ' ')
 
   const handleSettingsChange = patch => {
     const next = { ...loadSettings(), ...patch }
@@ -3267,6 +3304,7 @@ export default function App() {
     if (patch.starColor      !== undefined) setStarColor(patch.starColor)
     if (patch.flashOpacity   !== undefined) setFlashOpacity(patch.flashOpacity)
     if (patch.flashColor     !== undefined) setFlashColor(patch.flashColor)
+    if (patch.pauseKey       !== undefined) setPauseKey(patch.pauseKey)
     localStorage.setItem('kronox-settings', JSON.stringify(next))
   }
 
@@ -3295,7 +3333,7 @@ export default function App() {
       subdivision: song.subdivision,
       speed:       us.speed || 2.0,
       chart:       song.chart,
-      keybinds, laneColors, sfxVolume, musicVolume,
+      keybinds, laneColors, sfxVolume, musicVolume, pauseKey,
       autoplay:    true,
       scrollDown,
       mode3d:      us.mode3d || false,
@@ -3316,7 +3354,7 @@ export default function App() {
       subdivision: song.subdivision,
       speed:       us.speed || 2.0,
       chart:       song.chart,
-      keybinds, laneColors, sfxVolume, musicVolume,
+      keybinds, laneColors, sfxVolume, musicVolume, pauseKey,
       autoplay,
       scrollDown,
       mode3d:      us.mode3d || false,
@@ -3360,7 +3398,7 @@ export default function App() {
             laneColors={laneColors}
             musicVolume={musicVolume}
             sfxVolume={sfxVolume}
-            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume, scrollDown }); setScreen('game') }}
+            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume, scrollDown, pauseKey }); setScreen('game') }}
             onOpenPublish={cfg => { setPublishConfig(cfg); setShowPublish(true) }}
           />
         )}
@@ -3387,6 +3425,7 @@ export default function App() {
       <SettingsPanel
         open={showSettings}
         keybinds={keybinds}
+        pauseKey={pauseKey}
         laneColors={laneColors}
         sfxVolume={sfxVolume}
         musicVolume={musicVolume}
