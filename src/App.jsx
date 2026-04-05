@@ -2222,8 +2222,8 @@ function GameView({ config, onStop }) {
 
   const doMiss = useCallback(note => {
     note.hit = true
-    note.el?.remove(); note.trailEl?.remove()
-    note.el = null; note.trailEl = null
+    note.el?.remove(); note.el = null
+    note.trailEl?.remove(); note.trailEl = null
     const s = stateRef.current
     s.completedBeats.add(`${note.beat}-${note.lane}`)
     s.miss++; s.totalHits++; s.combo = 0; s.multiplier = 1
@@ -2255,17 +2255,61 @@ function GameView({ config, onStop }) {
     const s = stateRef.current
     const audio = audioRef.current; if (!audio) return
     const nowMs = audio.currentTime * 1000
-    const [wP, wG, wB] = config.mode3d ? [150, 200, 300] : [15, 45, 100]
+    const [wP, wG, wB] = config.mode3d ? [60, 150, 300] : [15, 45, 100]
+    const wMiss = config.mode3d ? 600 : 300  // tapping outside catch window within this range = MISS
+
+    // Per-lane tap cooldown: prevent spam-tapping from hitting next note immediately after a miss
+    if (!s.laneTapTime) s.laneTapTime = {}
+    const lastTap = s.laneTapTime[lane] || 0
+    if (nowMs - lastTap < 140) return  // 140ms cooldown per lane
+    s.laneTapTime[lane] = nowMs
+
+    // Helper: note-clone explosion in lane-local coords — appended inside the lane el so it
+    // participates in 3D perspective automatically (no 2D/3D coordinate conversion needed)
+    const spawnPhantom = (note) => {
+      const lEl = getLaneEl(note.lane)
+      if (!lEl) return
+      const noteColor = laneColors[note.lane]
+      const ph = document.createElement('div')
+      const phantomY = (note.yFromBottom ?? RECEPTOR_BOTTOM) - (config.mode3d ? 10 : 0)
+      ph.style.cssText = `
+        position:absolute;
+        left:50%;
+        bottom:${phantomY}px;
+        transform:translateX(-50%) scale(1);
+        transform-origin:50% 50%;
+        width:${NOTE_SIZE}px;
+        height:${NOTE_SIZE}px;
+        border-radius:50%;
+        background:${noteColor};
+        box-shadow:0 0 10px ${noteColor}55;
+        opacity:0.88;
+        pointer-events:none;
+        z-index:20;
+        transition:transform 100ms ease-out, opacity 100ms ease-out;
+      `
+      lEl.appendChild(ph)
+      ph.getBoundingClientRect()  // force layout flush so transition fires from scale(1)
+      ph.style.transform = 'translateX(-50%) scale(1.9)'
+      ph.style.opacity = '0'
+      setTimeout(() => ph.remove(), 120)
+    }
+
     let closest = null, minDist = Infinity
     for (const n of s.activeNotes) {
       if (n.lane !== lane || n.hit) continue
       const d = Math.abs(n.hitTimeMs - nowMs)
-      const isEarly = nowMs < n.hitTimeMs
-      // Early taps only register within GOOD window; late taps within full BAD window
-      if (d < minDist && d < (isEarly ? wG : wB)) { minDist = d; closest = n }
+      if (d < minDist && d < wMiss) { minDist = d; closest = n }
     }
     if (!closest) return
+
     const laneEl = getLaneEl(lane)
+
+    // Tap outside catch window but within miss range: MISS (anti-spam)
+    if (minDist >= wB) {
+      doMiss(closest)
+      return
+    }
 
     if (closest.holdDurationMs > 0) {
       s.heldNotes[lane] = { note: closest, startMs: nowMs, holdDurationMs: closest.holdDurationMs }
@@ -2275,6 +2319,7 @@ function GameView({ config, onStop }) {
       return
     }
 
+    const noteY = closest.yFromBottom ?? RECEPTOR_BOTTOM  // eslint-disable-line no-unused-vars
     closest.el?.remove(); closest.el = null
     closest.hit = true
     s.completedBeats.add(`${closest.beat}-${closest.lane}`)
@@ -2287,13 +2332,15 @@ function GameView({ config, onStop }) {
     const signedOffset = nowMs - closest.hitTimeMs
     if (minDist < wP)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
     else if (minDist < wG) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
-    else if (minDist < wB) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
-    else                   { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
+    else                   { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
+
+    // Explosion: note-clone expands and fades at the hit position
+    spawnPhantom(closest)
 
     s.score += pts * s.multiplier
     s.health = Math.min(100, s.health + 3)
     updateHud(); showJudge(text, color)
-  }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx])
+  }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx, doMiss])
 
   // Resume countdown effect: 3 → 2 → 1 → null → actually resume
   useEffect(() => {
@@ -2478,9 +2525,11 @@ function GameView({ config, onStop }) {
 
         // Spawn upcoming notes
         for (let b = 0; b <= Math.min(futureIdx, config.chart.length - 1); b++) {
+          const row = config.chart[b]
+          if (!row) continue  // guard against null/sparse rows from JSON round-trip
           for (let l = 0; l < 4; l++) {
             const key  = `${b}-${l}`
-            const cell = config.chart[b][l]
+            const cell = row[l]
             // Skip notes that are before the preview start offset
             if (config.audioStartOffset && b * subdivMs < config.audioStartOffset * 1000) {
               if (!s.completedBeats.has(key)) s.completedBeats.add(key)
@@ -2559,9 +2608,16 @@ function GameView({ config, onStop }) {
               }
               note.el = el
             }
-            note.el.style.bottom = yFromBottom + 'px'
+            // In 3D, shift note down 10px so the SVG cap centre aligns with the receptor circle centre
+            note.el.style.bottom = (yFromBottom - (config.mode3d ? 10 : 0)) + 'px'
+            // Fade out as note scrolls past receptor
+            const lateness = nowMs - note.hitTimeMs
+            if (lateness > 0) {
+              note.el.style.transition = 'none'
+              note.el.style.opacity = Math.max(0, 1 - lateness / (config.mode3d ? 300 : 100)).toFixed(2)
+            }
             if (config.mode3d) {
-              const brightness = Math.max(0.28, 1 - (yFromBottom - RECEPTOR_BOTTOM) / 750)
+              const brightness = Math.max(0.28, 1 - Math.max(0, yFromBottom - RECEPTOR_BOTTOM) / 750)
               note.el.style.filter = `brightness(${brightness.toFixed(2)})`
             }
           } else {
@@ -2641,8 +2697,10 @@ function GameView({ config, onStop }) {
             }
           }
 
-          // Miss if scrolls past (only for manual play — autoplay can never miss)
-          if (!config.autoplay && !isBeingHeld && yFromBottom < -100 && !note.hit) doMiss(note)
+          // Miss if scrolls past receptor area OR past the BAD window (only for manual play)
+          const msLate = nowMs - note.hitTimeMs
+          const wBrAF = config.mode3d ? 300 : 100
+          if (!config.autoplay && !isBeingHeld && !note.hit && (yFromBottom < -100 || msLate > wBrAF)) doMiss(note)
         }
 
         s.activeNotes = s.activeNotes.filter(n => !n.hit)
@@ -2727,7 +2785,7 @@ function GameView({ config, onStop }) {
               position: 'absolute', bottom: 0, left: '50%',
               width: TOTAL_W + LANE_GAP * 2,
               height: '500%',
-              transform: 'translateX(-50%) rotateX(48deg)',
+              transform: 'translateX(-50%) rotateX(68deg)',
               transformOrigin: '50% 100%',
               transformStyle: 'preserve-3d',
               display: 'flex', gap: LANE_GAP,
@@ -2741,6 +2799,13 @@ function GameView({ config, onStop }) {
                   background: '#ffffff0a', zIndex: 0, pointerEvents: 'none',
                 }} />
               ))}
+              {/* Receptor strike line — inside 3D transform so it aligns with receptor circles */}
+              <div style={{
+                position: 'absolute', left: 0, right: 0,
+                bottom: RECEPTOR_BOTTOM - 2, height: 2,
+                background: 'linear-gradient(to right, transparent, #ffffff28, #ffffff55, #ffffff28, transparent)',
+                zIndex: 5, pointerEvents: 'none',
+              }} />
               {[0, 1, 2, 3].map(l => (
                 <div key={l} className="fnf-lane" style={{
                   position: 'relative', width: LANE_W, flexShrink: 0, overflow: 'visible',
@@ -2770,14 +2835,6 @@ function GameView({ config, onStop }) {
                 </div>
               ))}
             </div>
-            {/* Stage edge glow bar */}
-            <div style={{
-              position: 'absolute', bottom: RECEPTOR_BOTTOM - 10, left: '50%',
-              transform: 'translateX(-50%)',
-              width: TOTAL_W + LANE_GAP * 2, height: 3,
-              background: 'linear-gradient(to right, transparent, #ffffff18, #ffffff30, #ffffff18, transparent)',
-              zIndex: 5, pointerEvents: 'none',
-            }} />
           </div>
         ) : (
           // ── Standard 2D highway ─────────────────────────────────────────
