@@ -2103,9 +2103,9 @@ function GameView({ config, onStop }) {
   const laneColors = config.laneColors || LANE_COLORS
 
   const isMobile = window.innerWidth < 600
-  const LANE_W          = isMobile ? Math.floor((window.innerWidth - 24) / 4) : (config.mode3d ? 108 : 90)
+  const LANE_W          = isMobile ? Math.floor((window.innerWidth - 16) / 4) : (config.mode3d ? 115 : 90)
   const LANE_GAP        = isMobile ? 4 : 8
-  const NOTE_SIZE       = isMobile ? Math.round(LANE_W * 0.82) : 74
+  const NOTE_SIZE       = isMobile ? Math.round(LANE_W * 0.82) : (config.mode3d ? Math.round(LANE_W * 0.82) : 74)
   const TOTAL_W         = LANE_W * 4 + LANE_GAP * 3
   const RECEPTOR_BOTTOM = isMobile ? 50 : 70
 
@@ -2276,7 +2276,7 @@ function GameView({ config, onStop }) {
     const audio = audioRef.current; if (!audio) return
     const nowMs = audio.currentTime * 1000
     const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [80, 125, 165, 200]
-    const wMiss = config.mode3d ? 600 : 300  // tapping outside catch window within this range = MISS
+    const wMiss = config.mode3d ? 280 : 240  // tapping outside catch window within this range = MISS
 
     // Helper: note-clone explosion — uses correct coord system per mode
     const spawnPhantom = (note) => {
@@ -2737,15 +2737,15 @@ function GameView({ config, onStop }) {
           <div style={{
             position: 'absolute', inset: 0,
             perspective: '700px',
-            perspectiveOrigin: '50% 5%',
+            perspectiveOrigin: '50% 20%',
             overflow: 'hidden',
           }}>
             {/* Fretboard plane */}
             <div style={{
               position: 'absolute', bottom: 0, left: '50%',
               width: TOTAL_W + LANE_GAP * 2,
-              height: '450%',
-              transform: 'translateX(-50%) rotateX(70deg)',
+              height: '280%',
+              transform: 'translateX(-50%) rotateX(52deg)',
               transformOrigin: '50% 100%',
               transformStyle: 'preserve-3d',
               display: 'flex', gap: LANE_GAP,
