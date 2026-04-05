@@ -1105,6 +1105,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   const saved = loadSettings()
   const [songTitle,   setSongTitle]   = useState(initialChart?.title       || saved.songTitle   || 'My Song')
   const [speed,       setSpeed]       = useState(saved.speed               || 2.0)
+  const [speed3d,     setSpeed3d]     = useState(saved.speed3d             || 3.0)
   const [bpm,         setBpm]         = useState(initialChart?.bpm         || saved.bpm         || 120)
   const [beats,       setBeats]       = useState(initialChart?.beats       || saved.beats       || DEFAULT_BEATS)
   const [subdivision, setSubdivision] = useState(initialChart?.subdivision || saved.subdivision || 1)
@@ -1790,7 +1791,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
 
       {/* Sliders */}
       <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 600 ? '1fr' : '1fr 1fr 1fr', gap: '1rem' }}>
-        <SliderField label="SCROLL SPEED" value={speed} min={0.5} max={5} step={0.1} display={speed.toFixed(1)} onChange={v => { setSpeed(v); saveSettings({ speed: v }) }} />
+        <SliderField label={mode3d ? 'SCROLL SPEED (3D)' : 'SCROLL SPEED'} value={mode3d ? speed3d : speed} min={0.5} max={mode3d ? 10 : 5} step={0.1} display={(mode3d ? speed3d : speed).toFixed(1)} onChange={v => { if (mode3d) { setSpeed3d(v); saveSettings({ speed3d: v }) } else { setSpeed(v); saveSettings({ speed: v }) } }} />
         <SliderField label="BPM" value={bpm} min={60} max={240} step={1} display={bpm} onChange={v => { setBpm(v); saveSettings({ bpm: v }) }} />
         <SliderField label="NOTE DENSITY" value={subdivision} min={1} max={8} step={1}
           display={['1/4', '1/8', '1/16', '1/32', '1/64', '1/128', '1/256', '1/512'][subdivision - 1]}
@@ -2017,12 +2018,12 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${autoplay ? '#ffd93d55' : '#222'}`, background: autoplay ? '#ffd93d11' : 'transparent', color: autoplay ? '#ffd93d' : '#555', cursor: 'pointer', transition: 'all 0.15s' }}>
           {autoplay ? '▶▶ AUTOPLAY ON' : 'AUTOPLAY'}
         </button>
-        <button onClick={() => { setMode3d(m => !m); saveSettings({ mode3d: !mode3d }) }}
+        <button onClick={() => { const next = !mode3d; setMode3d(next); saveSettings({ mode3d: next }); if (next && !saved.speed3d) { setSpeed3d(3.0); saveSettings({ speed3d: 3.0 }) } }}
           style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${mode3d ? '#cc44ff55' : '#222'}`, background: mode3d ? '#cc44ff11' : 'transparent', color: mode3d ? '#cc44ff' : '#555', cursor: 'pointer', transition: 'all 0.15s' }}>
           {mode3d ? '3D ON' : '3D MODE'}
         </button>
         <button
-          onClick={() => songFile && onStart({ songFile, songTitle, speed, bpm, chart, subdivision, keybinds, autoplay, mode3d })}
+          onClick={() => songFile && onStart({ songFile, songTitle, speed: mode3d ? speed3d : speed, bpm, chart, subdivision, keybinds, autoplay, mode3d })}
           disabled={!songFile}
           style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 13, letterSpacing: 1, fontWeight: 'bold', padding: '12px 28px', borderRadius: 6, cursor: songFile ? 'pointer' : 'not-allowed', background: autoplay ? '#ffd93d' : songFile ? '#66ff99' : '#1a1a1a', color: songFile ? '#111' : '#333', border: songFile ? 'none' : '1px solid #2a2a2a', transition: 'all 0.2s' }}
           onMouseEnter={e => { if (songFile) { e.currentTarget.style.opacity = '0.85'; e.currentTarget.style.transform = 'scale(1.02)' } }}
@@ -2251,6 +2252,29 @@ function GameView({ config, onStop }) {
     if (s.health <= 0) dieGame()
   }, [showJudge, updateHud, dieGame])
 
+  const spawnPhantom = useCallback((note) => {
+    const noteColor = laneColors[note.lane]
+    const y = note.yFromBottom ?? RECEPTOR_BOTTOM
+    const lEl = getLaneEl(note.lane)
+    if (!lEl) return
+    const ph = document.createElement('div')
+    ph.style.cssText = `
+      position:absolute;
+      left:50%; bottom:${y}px;
+      transform:translateX(-50%) scale(1); transform-origin:50% 50%;
+      width:${NOTE_SIZE}px; height:${NOTE_SIZE}px;
+      border-radius:50%; background:${noteColor};
+      box-shadow:0 0 10px ${noteColor}55;
+      opacity:0.88; pointer-events:none; z-index:20;
+      transition:transform 100ms ease-out, opacity 100ms ease-out;
+    `
+    lEl.appendChild(ph)
+    ph.getBoundingClientRect()
+    ph.style.transform = 'translateX(-50%) scale(1.9)'
+    ph.style.opacity   = '0'
+    setTimeout(() => ph.remove(), 120)
+  }, [getLaneEl, laneColors, NOTE_SIZE, RECEPTOR_BOTTOM])
+
   const releaseHold = useCallback(lane => {
     const s = stateRef.current
     const held = s.heldNotes[lane]; if (!held) return
@@ -2264,12 +2288,13 @@ function GameView({ config, onStop }) {
     s.activeNotes = s.activeNotes.filter(n => !n.hit)
     s.combo++; s.totalHits++
     const laneEl = getLaneEl(lane)
+    spawnPhantom(note)
     if (frac >= 0.99)     { s.score += 350 * 2 * s.multiplier; s.perfect++; s.health = Math.min(100, s.health + 5); showJudge('PERFECT', '#ffffff'); flashLane(laneEl) }
     else if (frac >= 0.67) { s.score += 200 * s.multiplier;    s.good++;    s.health = Math.min(100, s.health + 3); showJudge('GOOD', '#aaaaaa');    flashLane(laneEl) }
     else if (frac >= 0.33) { s.score += 150 * s.multiplier;    s.okay++;    s.health = Math.min(100, s.health + 1); showJudge('OKAY', '#aaaa44') }
     else                   { s.score += 100 * s.multiplier;    s.bad++;                                            showJudge('BAD', '#555555') }
     updateHud()
-  }, [showJudge, updateHud, getLaneEl, flashLane])
+  }, [showJudge, updateHud, getLaneEl, flashLane, spawnPhantom])
 
   const hitNote = useCallback(lane => {
     const s = stateRef.current
@@ -2277,30 +2302,6 @@ function GameView({ config, onStop }) {
     const nowMs = audio.currentTime * 1000
     const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [80, 125, 165, 200]
     const wMiss = config.mode3d ? 280 : 240  // tapping outside catch window within this range = MISS
-
-    // Helper: note-clone explosion — uses correct coord system per mode
-    const spawnPhantom = (note) => {
-      const noteColor = laneColors[note.lane]
-      const y = note.yFromBottom ?? RECEPTOR_BOTTOM
-      const lEl = getLaneEl(note.lane)
-      if (!lEl) return
-      const ph = document.createElement('div')
-      ph.style.cssText = `
-        position:absolute;
-        left:50%; bottom:${y}px;
-        transform:translateX(-50%) scale(1); transform-origin:50% 50%;
-        width:${NOTE_SIZE}px; height:${NOTE_SIZE}px;
-        border-radius:50%; background:${noteColor};
-        box-shadow:0 0 10px ${noteColor}55;
-        opacity:0.88; pointer-events:none; z-index:20;
-        transition:transform 100ms ease-out, opacity 100ms ease-out;
-      `
-      lEl.appendChild(ph)
-      ph.getBoundingClientRect()
-      ph.style.transform = 'translateX(-50%) scale(1.9)'
-      ph.style.opacity   = '0'
-      setTimeout(() => ph.remove(), 120)
-    }
 
     let closest = null, minDist = Infinity
     for (const n of s.activeNotes) {
@@ -2312,14 +2313,17 @@ function GameView({ config, onStop }) {
 
     const laneEl = getLaneEl(lane)
 
-    // Tap outside catch window but within miss range: MISS (anti-spam)
+    // Only miss on tap if the note has already passed (late tap outside BAD window)
+    // Never miss for early taps — that causes false misses during jacks
+    const signedOffsetCheck = nowMs - closest.hitTimeMs
     if (minDist >= wB) {
-      doMiss(closest)
+      if (signedOffsetCheck > 0) doMiss(closest)
       return
     }
 
     if (closest.holdDurationMs > 0) {
       s.heldNotes[lane] = { note: closest, startMs: nowMs, holdDurationMs: closest.holdDurationMs }
+      spawnPhantom(closest)
       closest.el?.remove(); closest.el = null
       flashLane(laneEl)
       playHitSfx()
@@ -2348,7 +2352,7 @@ function GameView({ config, onStop }) {
     s.score += pts * s.multiplier
     s.health = Math.min(100, s.health + 3)
     updateHud(); showJudge(text, color)
-  }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx, doMiss])
+  }, [showJudge, updateHud, getLaneEl, flashLane, playHitSfx, doMiss, spawnPhantom])
 
   // Resume countdown effect: 3 → 2 → 1 → null → actually resume
   useEffect(() => {
@@ -2743,9 +2747,9 @@ function GameView({ config, onStop }) {
             {/* Fretboard plane */}
             <div style={{
               position: 'absolute', bottom: 0, left: '50%',
-              width: TOTAL_W + LANE_GAP * 2,
+              width: TOTAL_W,
               height: '280%',
-              transform: 'translateX(-50%) rotateX(52deg)',
+              transform: 'translateX(-50%) rotateX(40deg)',
               transformOrigin: '50% 100%',
               transformStyle: 'preserve-3d',
               display: 'flex', gap: LANE_GAP,
