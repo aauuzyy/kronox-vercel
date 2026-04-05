@@ -51,7 +51,7 @@ function addPlayerGameResult(guestId, { score, accuracy, grade, perfect, good, b
   localStorage.setItem('kronox-player-stats', JSON.stringify(all))
   // Mirror to global Supabase leaderboard (best-effort)
   import('./supabase.js').then(({ upsertPlayerResult }) =>
-    upsertPlayerResult(guestId, { score, accuracy, grade, perfect, good, bad, miss })
+    upsertPlayerResult(guestId, getDisplayName(), { score, accuracy, grade, perfect, good, bad, miss })
   ).catch(() => {})
 }
 function calcGrade(accuracy) {
@@ -667,7 +667,7 @@ function LeaderboardModal({ onClose }) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <span style={{ fontFamily: 'Arial', fontSize: 12, color: isYou ? '#fff' : isTop3 ? rc : '#bbb', fontWeight: isYou || isTop3 ? 'bold' : 'normal' }}>
-                      {p.id}
+                      {p.displayName || (isYou ? getDisplayName() : p.id)}
                     </span>
                     {isYou && (
                       <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, color: '#666', background: 'rgba(255,255,255,0.07)', padding: '2px 6px', borderRadius: 3 }}>YOU</span>
@@ -2194,7 +2194,7 @@ function GameView({ config, onStop }) {
     for (const n of s.activeNotes) {
       if (n.lane !== lane || n.hit) continue
       const d = Math.abs(n.hitTimeMs - nowMs)
-      if (d < minDist && d < 150) { minDist = d; closest = n }
+      if (d < minDist && d < 200) { minDist = d; closest = n }
     }
     if (!closest) return
     const laneEl = getLaneEl(lane)
@@ -2217,9 +2217,9 @@ function GameView({ config, onStop }) {
 
     let pts, text, color
     const signedOffset = nowMs - closest.hitTimeMs
-    if (minDist < 15)       { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
-    else if (minDist < 45)  { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
-    else if (minDist < 100) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
+    if (minDist < 50)       { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
+    else if (minDist < 100) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
+    else if (minDist < 200) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
     else                    { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
 
     s.score += pts * s.multiplier

@@ -1,6 +1,7 @@
 -- ── Players table (global leaderboard) ────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS players (
   id            text PRIMARY KEY,
+  display_name  text    DEFAULT '',
   total_score   bigint  DEFAULT 0,
   games_played  integer DEFAULT 0,
   best_accuracy integer DEFAULT 0,
@@ -12,30 +13,37 @@ CREATE TABLE IF NOT EXISTS players (
   updated_at    timestamptz DEFAULT now()
 );
 
+-- Add display_name to existing tables
+ALTER TABLE players ADD COLUMN IF NOT EXISTS display_name text DEFAULT '';
+
 -- Allow anon to read + upsert (via RPC)
 ALTER TABLE players ENABLE ROW LEVEL SECURITY;
+DROP POLICY IF EXISTS "players_read"   ON players;
+DROP POLICY IF EXISTS "players_upsert" ON players;
 CREATE POLICY "players_read"   ON players FOR SELECT USING (true);
 CREATE POLICY "players_upsert" ON players FOR ALL    USING (true) WITH CHECK (true);
 
 -- RPC: atomically add one game result to a player row
 CREATE OR REPLACE FUNCTION add_player_result(
-  p_id       text,
-  p_score    bigint,
-  p_accuracy integer,
-  p_grade    text,
-  p_perfect  bigint,
-  p_good     bigint,
-  p_bad      bigint,
-  p_miss     bigint
+  p_id           text,
+  p_display_name text,
+  p_score        bigint,
+  p_accuracy     integer,
+  p_grade        text,
+  p_perfect      bigint,
+  p_good         bigint,
+  p_bad          bigint,
+  p_miss         bigint
 ) RETURNS void LANGUAGE plpgsql SECURITY DEFINER AS $$
 DECLARE
   grade_rank jsonb := '{"S+":5,"S":4,"A":3,"B":2,"C":1}';
 BEGIN
-  INSERT INTO players (id, total_score, games_played, best_accuracy, best_grade,
+  INSERT INTO players (id, display_name, total_score, games_played, best_accuracy, best_grade,
                        total_perfect, total_good, total_bad, total_miss)
-  VALUES (p_id, p_score, 1, p_accuracy, p_grade,
+  VALUES (p_id, p_display_name, p_score, 1, p_accuracy, p_grade,
           p_perfect, p_good, p_bad, p_miss)
   ON CONFLICT (id) DO UPDATE SET
+    display_name  = p_display_name,
     total_score   = players.total_score   + p_score,
     games_played  = players.games_played  + 1,
     best_accuracy = GREATEST(players.best_accuracy, p_accuracy),
