@@ -15,6 +15,13 @@ const GUEST_ID = (() => {
   return id
 })()
 
+function getDisplayName() {
+  return localStorage.getItem('kronox-display-name') || GUEST_ID
+}
+function saveDisplayName(name) {
+  localStorage.setItem('kronox-display-name', name.trim() || GUEST_ID)
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem('kronox-settings') || '{}') } catch { return {} }
@@ -728,9 +735,23 @@ function CountdownOverlay({ count }) {
 
 // ─── Publish Modal ────────────────────────────────────────────────────────────
 function PublishModal({ config, onClose }) {
-  const [status,    setStatus]    = useState('idle') // idle | publishing | success | error
-  const [errMsg,    setErrMsg]    = useState('')
-  const [editTitle, setEditTitle] = useState(config.songTitle || '')
+  const [status,      setStatus]      = useState('idle') // idle | publishing | success | error
+  const [errMsg,      setErrMsg]      = useState('')
+  const [editTitle,   setEditTitle]   = useState(config.songTitle || '')
+  const [displayName, setDisplayName] = useState(getDisplayName)
+  const [editingName, setEditingName] = useState(false)
+  const nameInputRef = useRef(null)
+
+  useEffect(() => {
+    if (editingName) nameInputRef.current?.select()
+  }, [editingName])
+
+  const commitName = () => {
+    const trimmed = displayName.trim() || GUEST_ID
+    setDisplayName(trimmed)
+    saveDisplayName(trimmed)
+    setEditingName(false)
+  }
 
   const handlePublish = async () => {
     if (!editTitle.trim()) return
@@ -745,7 +766,7 @@ function PublishModal({ config, onClose }) {
         subdivision: config.subdivision,
         speed:       config.speed,
         chart:       config.chart,
-        creator:     GUEST_ID,
+        creator:     displayName,
         duration:    dur,
       })
       setStatus('success')
@@ -793,9 +814,19 @@ function PublishModal({ config, onClose }) {
               ))}
             </div>
 
-            <div style={{ padding: '10px 14px', background: '#111', borderRadius: 5, border: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', letterSpacing: 1 }}>PUBLISHING AS</span>
-              <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#777', fontWeight: 'bold' }}>{GUEST_ID}</span>
+            <div style={{ padding: '10px 14px', background: '#111', borderRadius: 5, border: '1px solid #1e1e1e', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', letterSpacing: 1, flexShrink: 0 }}>PUBLISHING AS</span>
+              {editingName
+                ? <input ref={nameInputRef} value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    onBlur={commitName}
+                    onKeyDown={e => { if (e.key === 'Enter') commitName(); if (e.key === 'Escape') { setDisplayName(getDisplayName()); setEditingName(false) } }}
+                    style={{ fontFamily: 'Arial', fontSize: 11, fontWeight: 'bold', color: '#fff', background: 'transparent', border: 'none', borderBottom: '1px solid #555', outline: 'none', textAlign: 'right', flex: 1, minWidth: 0 }} />
+                : <button onClick={() => setEditingName(true)}
+                    style={{ fontFamily: 'Arial', fontSize: 11, fontWeight: 'bold', color: '#777', background: 'none', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'right', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+                    title="Click to edit your display name">
+                    {displayName} ✎
+                  </button>}
             </div>
 
             {errMsg && <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#ff6666', lineHeight: 1.6 }}>{errMsg}</div>}
@@ -817,6 +848,29 @@ function PublishModal({ config, onClose }) {
       </div>
     </div>
   )
+}
+
+// ─── Catalog name display (inline editable) ──────────────────────────────────
+function CatalogNameDisplay() {
+  const [name,    setName]    = useState(getDisplayName)
+  const [editing, setEditing] = useState(false)
+  const inputRef = useRef(null)
+  useEffect(() => { if (editing) inputRef.current?.select() }, [editing])
+  const commit = () => {
+    const trimmed = name.trim() || GUEST_ID
+    setName(trimmed); saveDisplayName(trimmed); setEditing(false)
+  }
+  return editing
+    ? <input ref={inputRef} value={name}
+        onChange={e => setName(e.target.value)}
+        onBlur={commit}
+        onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setName(getDisplayName()); setEditing(false) } }}
+        style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 8, color: '#fff', background: 'transparent', border: 'none', borderBottom: '1px solid #555', outline: 'none', width: 160, textAlign: 'right' }} />
+    : <button onClick={() => setEditing(true)}
+        style={{ marginLeft: 'auto', fontFamily: 'Arial', fontSize: 8, color: '#444', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}
+        title="Click to change your display name">
+        {name} ✎
+      </button>
 }
 
 // ─── Catalog Panel ────────────────────────────────────────────────────────────
@@ -871,7 +925,7 @@ function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
       <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: 14 }}>
         <TitleBarBtn onClick={onBack}>← BACK</TitleBarBtn>
         <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>SONG CATALOG</span>
-        <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#333', marginLeft: 'auto' }}>{GUEST_ID}</span>
+        <CatalogNameDisplay />
       </div>
 
       {/* Controls */}
