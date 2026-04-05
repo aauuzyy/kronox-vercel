@@ -2320,6 +2320,7 @@ function GameView({ config, onStop }) {
   const releaseHold = useCallback(lane => {
     const s = stateRef.current
     const held = s.heldNotes[lane]; if (!held) return
+    delete s.heldNotes[lane]  // clear immediately so double-calls are no-ops
     const { note, startMs, holdDurationMs } = held
     const nowMs = (audioRef.current ? audioRef.current.currentTime * 1000 : 0) - audioOffsetRef.current
     const frac = Math.min(1, (nowMs - startMs) / holdDurationMs)
