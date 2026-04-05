@@ -2206,7 +2206,7 @@ function GameView({ config, onStop }) {
     for (const n of s.activeNotes) {
       if (n.lane !== lane || n.hit) continue
       const d = Math.abs(n.hitTimeMs - nowMs)
-      if (d < minDist && d < 300) { minDist = d; closest = n }
+      if (d < minDist && d < (config.mode3d ? 300 : 100)) { minDist = d; closest = n }
     }
     if (!closest) return
     const laneEl = getLaneEl(lane)
@@ -2229,10 +2229,11 @@ function GameView({ config, onStop }) {
 
     let pts, text, color
     const signedOffset = nowMs - closest.hitTimeMs
-    if (minDist < 150)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
-    else if (minDist < 200) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
-    else if (minDist < 300) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
-    else                    { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
+    const [wP, wG, wB] = config.mode3d ? [150, 200, 300] : [15, 45, 100]
+    if (minDist < wP)      { pts = 350; text = 'PERFECT'; color = '#ffffff'; s.perfect++; s.hitOffsets.push(signedOffset) }
+    else if (minDist < wG) { pts = 200; text = 'GOOD';    color = '#aaaaaa'; s.good++;    s.hitOffsets.push(signedOffset) }
+    else if (minDist < wB) { pts = 100; text = 'BAD';     color = '#555555'; s.bad++;     s.hitOffsets.push(signedOffset) }
+    else                   { pts = 50;  text = 'MISS';    color = '#ff4466'; s.miss++ }
 
     s.score += pts * s.multiplier
     s.health = Math.min(100, s.health + 3)
