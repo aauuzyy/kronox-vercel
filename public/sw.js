@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kronox-v3'
+const CACHE_NAME = 'kronox-v4'
 
 // Assets to cache on install (shell only — audio files are not cached)
 const PRECACHE = [

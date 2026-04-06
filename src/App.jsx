@@ -2187,6 +2187,7 @@ function GameView({ config, onStop }) {
   const [paused,          setPaused]          = useState(false)
   const [resumeCountdown, setResumeCountdown] = useState(null)
   const [comboFlash,      setComboFlash]      = useState(false)
+  const [pausesLeft,      setPausesLeft]      = useState(3)
 
   // ── Hit SFX via Web Audio (allows gain > 1 to be louder than music) ───────
   useEffect(() => {
@@ -2347,6 +2348,7 @@ function GameView({ config, onStop }) {
 
   const releaseHold = useCallback(lane => {
     const s = stateRef.current
+    if (s.paused) return
     const held = s.heldNotes[lane]; if (!held) return
     delete s.heldNotes[lane]  // clear immediately so double-calls are no-ops
     const { note, startMs, holdDurationMs } = held
@@ -2368,6 +2370,7 @@ function GameView({ config, onStop }) {
 
   const hitNote = useCallback(lane => {
     const s = stateRef.current
+    if (s.paused) return
     const audio = audioRef.current; if (!audio) return
     const nowMs = audio.currentTime * 1000 - audioOffsetRef.current
     const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [45, 80, 115, 150]
@@ -2444,10 +2447,15 @@ function GameView({ config, onStop }) {
   const togglePause = useCallback(() => {
     const s = stateRef.current
     if (!s.paused) {
-      // Pause immediately
-      s.paused = true; setPaused(true)
-      audioRef.current?.pause()
-      setResumeCountdown(null) // cancel any in-progress resume
+      // Check pause budget
+      setPausesLeft(prev => {
+        if (prev <= 0) return prev  // no pauses left — do nothing
+        // Pause immediately
+        s.paused = true; setPaused(true)
+        audioRef.current?.pause()
+        setResumeCountdown(null)
+        return prev - 1
+      })
     } else {
       // Unpause — kick off 3-2-1 countdown
       setResumeCountdown(3)
@@ -2915,8 +2923,15 @@ function GameView({ config, onStop }) {
 
         {/* HUD */}
         <div style={{ position: 'absolute', top: 12, left: 0, right: 0, display: 'flex', justifyContent: 'space-between', padding: '0 20px', pointerEvents: 'none', zIndex: 10 }}>
-          {/* Left spacer (combo moved beside highway) */}
-          <div style={{ width: 54 }} />
+          {/* Pause pips */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4, justifyContent: 'center' }}>
+            <div style={{ fontFamily: 'Arial', fontSize: 6, color: '#333', letterSpacing: 2 }}>PAUSE</div>
+            <div style={{ display: 'flex', gap: 4 }}>
+              {[0,1,2].map(i => (
+                <div key={i} style={{ width: 7, height: 7, borderRadius: '50%', background: i < pausesLeft ? '#ffffff55' : '#1a1a1a', border: '1px solid #2a2a2a', transition: 'background 0.2s' }} />
+              ))}
+            </div>
+          </div>
           <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#222', letterSpacing: 2, alignSelf: 'center' }}>{config.autoplay ? 'AUTOPLAY' : config.songTitle.toUpperCase()}</div>
           <div style={{ textAlign: 'right' }}>
             <div style={{ fontFamily: 'Arial', fontSize: 6, color: '#3a3a3a', letterSpacing: 2, marginBottom: 2 }}>SCORE</div>
@@ -2939,9 +2954,8 @@ function GameView({ config, onStop }) {
               left: `calc(50% - ${TOTAL_W / 2 + ringSize + 18}px)`,
               top: '50%', transform: 'translateY(-50%)',
               pointerEvents: 'none', zIndex: 10,
-              animation: comboFlash ? 'comboPop 0.12s ease-out' : 'none',
             }}>
-              <div style={{ position: 'relative', width: ringSize, height: ringSize }}>
+              <div style={{ position: 'relative', width: ringSize, height: ringSize, animation: comboFlash ? 'comboPop 0.12s ease-out' : 'none' }}>
                 <svg width={ringSize} height={ringSize} style={{ position: 'absolute', inset: 0, transform: 'rotate(-90deg)' }}>
                   <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke="#1a1a1a" strokeWidth="4" />
                   <circle cx={ringSize/2} cy={ringSize/2} r={r} fill="none" stroke={ringColor}
@@ -3016,7 +3030,7 @@ function GameView({ config, onStop }) {
 
       {/* Control bar */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: isMobile ? '12px 16px' : '9px 16px', background: '#111', borderTop: '1px solid #1e1e1e', flexShrink: 0 }}>
-        <CtrlBtn onClick={togglePause}>{paused ? 'RESUME' : 'PAUSE'}</CtrlBtn>
+        <CtrlBtn onClick={togglePause} disabled={!paused && pausesLeft <= 0} style={{ opacity: !paused && pausesLeft <= 0 ? 0.35 : 1 }}>{paused ? 'RESUME' : 'PAUSE'}</CtrlBtn>
         <CtrlBtn onClick={stopGame}>QUIT</CtrlBtn>
         {!isMobile && (
           <div style={{ marginLeft: 'auto', display: 'flex', gap: 12, alignItems: 'center' }}>
