@@ -161,7 +161,7 @@ function TitleBarBtn({ onClick, children, active }) {
 }
 
 // ─── Settings Panel (slide-in drawer) ────────────────────────────────────────
-function SettingsPanel({ open, keybinds, pauseKey, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, flashColor, onChange, onClose }) {
+function SettingsPanel({ open, keybinds, pauseKey, receptorHeight, laneColors, sfxVolume, musicVolume, showStars, scrollDown, starColor, flashOpacity, flashColor, onChange, onClose }) {
   const [keys,      setKeys]      = useState([...keybinds])
   const [pKey,      setPKey]      = useState(pauseKey)
   const [listening, setListening] = useState(null)  // null | 0-3 (lane) | 'pause'
@@ -301,7 +301,14 @@ function SettingsPanel({ open, keybinds, pauseKey, laneColors, sfxVolume, musicV
 
         <Divider />
 
-        {/* VISUALS */}
+        {/* RECEPTOR */}
+        <SectionLabel>RECEPTOR</SectionLabel>
+        <SliderRow label="RECEPTOR HEIGHT" value={receptorHeight} min={30} max={300} step={5}
+          onChg={v => onChange({ receptorHeight: v })}
+          fmt={v => v + 'px'} />
+        <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a', marginTop: 8, letterSpacing: 1 }}>Applied on next session</div>
+
+        <Divider />
         <SectionLabel>VISUALS</SectionLabel>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -2178,7 +2185,7 @@ function GameView({ config, onStop }) {
   const LANE_GAP        = isMobile ? 4 : 8
   const NOTE_SIZE       = isMobile ? Math.round(LANE_W * 0.82) : (config.mode3d ? Math.round(LANE_W * 0.82) : 74)
   const TOTAL_W         = LANE_W * 4 + LANE_GAP * 3
-  const RECEPTOR_BOTTOM = isMobile ? 50 : 70
+  const RECEPTOR_BOTTOM = isMobile ? 50 : (config.receptorHeight ?? 70)
 
   const [hud,             setHud]             = useState({ score: 0, combo: 0, multiplier: 1, health: 80 })
   const [audioProgress,   setAudioProgress]   = useState({ current: 0, duration: 0 })
@@ -2850,13 +2857,6 @@ function GameView({ config, onStop }) {
                   background: '#ffffff0a', zIndex: 0, pointerEvents: 'none',
                 }} />
               ))}
-              {/* Receptor strike line — inside 3D transform so it aligns with receptor circles */}
-              <div style={{
-                position: 'absolute', left: 0, right: 0,
-                bottom: RECEPTOR_BOTTOM - 2, height: 2,
-                background: 'linear-gradient(to right, transparent, #ffffff28, #ffffff55, #ffffff28, transparent)',
-                zIndex: 5, pointerEvents: 'none',
-              }} />
               {[0, 1, 2, 3].map(l => (
                 <div key={l} className="fnf-lane" style={{
                   position: 'relative', width: LANE_W, flexShrink: 0, overflow: 'visible',
@@ -3306,6 +3306,7 @@ export default function App() {
   const [flashOpacity, setFlashOpacity] = useState(saved.flashOpacity ?? 0.13)
   const [flashColor,   setFlashColor]   = useState(saved.flashColor   || '#ffffff')
   const [pauseKey,     setPauseKey]     = useState(saved.pauseKey     || ' ')
+  const [receptorHeight, setReceptorHeight] = useState(saved.receptorHeight ?? 70)
 
   const handleSettingsChange = patch => {
     const next = { ...loadSettings(), ...patch }
@@ -3319,6 +3320,7 @@ export default function App() {
     if (patch.flashOpacity   !== undefined) setFlashOpacity(patch.flashOpacity)
     if (patch.flashColor     !== undefined) setFlashColor(patch.flashColor)
     if (patch.pauseKey       !== undefined) setPauseKey(patch.pauseKey)
+    if (patch.receptorHeight !== undefined) setReceptorHeight(patch.receptorHeight)
     localStorage.setItem('kronox-settings', JSON.stringify(next))
   }
 
@@ -3347,7 +3349,7 @@ export default function App() {
       subdivision: song.subdivision,
       speed:       us.speed || 2.0,
       chart:       song.chart,
-      keybinds, laneColors, sfxVolume, musicVolume, pauseKey,
+      keybinds, laneColors, sfxVolume, musicVolume, pauseKey, receptorHeight,
       autoplay:    true,
       scrollDown,
       mode3d:      us.mode3d || false,
@@ -3368,7 +3370,7 @@ export default function App() {
       subdivision: song.subdivision,
       speed:       us.speed || 2.0,
       chart:       song.chart,
-      keybinds, laneColors, sfxVolume, musicVolume, pauseKey,
+      keybinds, laneColors, sfxVolume, musicVolume, pauseKey, receptorHeight,
       autoplay,
       scrollDown,
       mode3d:      us.mode3d || false,
@@ -3412,7 +3414,7 @@ export default function App() {
             laneColors={laneColors}
             musicVolume={musicVolume}
             sfxVolume={sfxVolume}
-            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume, scrollDown, pauseKey }); setScreen('game') }}
+            onStart={cfg => { setGameConfig({ ...cfg, keybinds, laneColors, sfxVolume, musicVolume, scrollDown, pauseKey, receptorHeight }); setScreen('game') }}
             onOpenPublish={cfg => { setPublishConfig(cfg); setShowPublish(true) }}
           />
         )}
@@ -3440,6 +3442,7 @@ export default function App() {
         open={showSettings}
         keybinds={keybinds}
         pauseKey={pauseKey}
+        receptorHeight={receptorHeight}
         laneColors={laneColors}
         sfxVolume={sfxVolume}
         musicVolume={musicVolume}
