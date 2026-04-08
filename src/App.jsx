@@ -99,6 +99,26 @@ function saveHistoryEntry(entry) {
   h.unshift(entry)
   localStorage.setItem('kronox-history', JSON.stringify(h.slice(0, 20)))
 }
+let _sharedAnalyser = null
+let _sharedAudioCtx = null
+const connectSharedAnalyser = audioEl => {
+  try {
+    if (!_sharedAudioCtx || _sharedAudioCtx.state === 'closed') {
+      _sharedAudioCtx = new AudioContext()
+    }
+    _sharedAudioCtx.resume()
+    const analyser = _sharedAudioCtx.createAnalyser()
+    analyser.fftSize = 1024
+    const src = _sharedAudioCtx.createMediaElementSource(audioEl)
+    src.connect(analyser)
+    analyser.connect(_sharedAudioCtx.destination)
+    _sharedAnalyser = analyser
+  } catch { /* context limit or already connected */ }
+}
+const emitMusic = playing => {
+  if (!playing) _sharedAnalyser = null
+  window.dispatchEvent(new CustomEvent('kronox:music', { detail: !!playing }))
+}
 const GRADE_COLORS = { 'S+': '#ffd700', 'S': '#c0c0c0', 'A': '#66ff99', 'B': '#4d96ff', 'C': '#888' }
 
 // ─── TitleBar ─────────────────────────────────────────────────────────────────
@@ -108,8 +128,8 @@ function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderb
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      height: 44, padding: '0 16px', background: '#111111',
-      borderBottom: '1px solid #1e1e1e', flexShrink: 0, userSelect: 'none',
+      height: 44, padding: '0 16px', background: '#0a0a0a',
+      borderBottom: '1px solid #111', flexShrink: 0, userSelect: 'none',
       position: 'relative', zIndex: 600,
     }}>
       <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#ffffff', letterSpacing: 4 }}>KRONOX</span>
@@ -122,7 +142,7 @@ function TitleBar({ onToggleSettings, settingsOpen, onOpenCatalog, onOpenLeaderb
           {menuOpen && (
             <div style={{
               position: 'absolute', top: 44, right: 0, left: 0,
-              background: '#111', borderBottom: '1px solid #1e1e1e',
+              background: '#0a0a0a', borderBottom: '1px solid #111',
               display: 'flex', flexDirection: 'column', zIndex: 601,
             }}>
               {[['HISTORY', onOpenHistory], ['SCORES', onOpenLeaderboard], ['CATALOG', onOpenCatalog],
@@ -208,7 +228,7 @@ function SettingsPanel({ open, keybinds, pauseKey, receptorHeight, laneColors, s
     return k.toUpperCase()
   }
 
-  const Divider = () => <div style={{ height: 1, background: '#181818', margin: '20px 0' }} />
+  const Divider = () => <div style={{ height: 1, background: '#111', margin: '20px 0' }} />
 
   const SectionLabel = ({ children }) => (
     <div style={{ fontFamily: 'Arial', fontSize: 7, color: '#3a3a3a', letterSpacing: 3, marginBottom: 14 }}>{children}</div>
@@ -234,7 +254,7 @@ function SettingsPanel({ open, keybinds, pauseKey, receptorHeight, laneColors, s
       )}
       <div style={{
         position: 'fixed', top: 0, right: 0, bottom: 0, width: 290,
-        background: '#0c0c0c', borderLeft: '1px solid #1a1a1a',
+        background: '#0a0a0a', borderLeft: '1px solid #111',
         transform: open ? 'translateX(0)' : 'translateX(100%)',
         transition: 'transform 0.22s cubic-bezier(0.4,0,0.2,1)',
         zIndex: 500, display: 'flex', flexDirection: 'column',
@@ -567,13 +587,13 @@ function CalibrationModal({ onClose }) {
         {/* Manual offset always visible */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#111', border: '1px solid #1e1e1e', borderRadius: 8, padding: '12px 16px' }}>
           <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#444', letterSpacing: 3, flex: 1 }}>CURRENT OFFSET</div>
-          <button onClick={() => adjustManual(-5)} style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>−5</button>
-          <button onClick={() => adjustManual(-1)} style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>−1</button>
+          <button onClick={() => adjustManual(-5)} style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#111', color: '#888', border: '1px solid #1e1e1e', cursor: 'pointer' }}>−5</button>
+          <button onClick={() => adjustManual(-1)} style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#111', color: '#888', border: '1px solid #1e1e1e', cursor: 'pointer' }}>−1</button>
           <div style={{ fontFamily: 'Arial', fontSize: 20, fontWeight: 'bold', color: manualOffset === 0 ? '#66ff99' : '#fff', minWidth: 70, textAlign: 'center' }}>
             {manualOffset > 0 ? '+' : ''}{manualOffset}<span style={{ fontSize: 10, color: '#555', marginLeft: 3 }}>ms</span>
           </div>
-          <button onClick={() => adjustManual(1)}  style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>+1</button>
-          <button onClick={() => adjustManual(5)}  style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#1a1a1a', color: '#888', border: '1px solid #2a2a2a', cursor: 'pointer' }}>+5</button>
+          <button onClick={() => adjustManual(1)}  style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#111', color: '#888', border: '1px solid #1e1e1e', cursor: 'pointer' }}>+1</button>
+          <button onClick={() => adjustManual(5)}  style={{ fontFamily: 'monospace', fontSize: 14, width: 32, height: 32, borderRadius: 4, background: '#111', color: '#888', border: '1px solid #1e1e1e', cursor: 'pointer' }}>+5</button>
           <button onClick={() => { setManualOffset(0); saveOffset(0) }} style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 1, padding: '6px 10px', borderRadius: 4, background: 'transparent', color: '#ff6666', border: '1px solid #ff666633', cursor: 'pointer' }}>RESET</button>
         </div>
 
@@ -836,6 +856,7 @@ function PublishModal({ config, onClose }) {
       previewAudioRef.current?.pause()
       previewAudioRef.current = null
       setPreviewing(false)
+      emitMusic(false)
       return
     }
     if (!config.songFile) return
@@ -844,12 +865,14 @@ function PublishModal({ config, onClose }) {
     audio.volume = 0.7
     audio.currentTime = 0
     audio.play()
+    connectSharedAnalyser(audio)
+    emitMusic(true)
     previewAudioRef.current = audio
     setPreviewing(true)
-    audio.addEventListener('ended', () => { setPreviewing(false); previewAudioRef.current = null })
+    audio.addEventListener('ended', () => { setPreviewing(false); previewAudioRef.current = null; emitMusic(false) })
     // auto-stop after 15s
     setTimeout(() => {
-      if (previewAudioRef.current === audio) { audio.pause(); setPreviewing(false); previewAudioRef.current = null }
+      if (previewAudioRef.current === audio) { audio.pause(); setPreviewing(false); previewAudioRef.current = null; emitMusic(false) }
     }, 15000)
   }
 
@@ -886,7 +909,7 @@ function PublishModal({ config, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.9)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{ background: '#181818', border: '1px solid #2a2a2a', borderRadius: 8, padding: '28px 32px', width: 400, display: 'flex', flexDirection: 'column', gap: 18 }}>
+      <div style={{ background: '#0f0f0f', border: '1px solid #1a1a1a', borderRadius: 8, padding: '28px 32px', width: 400, display: 'flex', flexDirection: 'column', gap: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <span style={{ fontFamily: 'Arial', fontSize: 11, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>PUBLISH CHART</span>
           <button onClick={onClose} style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
@@ -1001,15 +1024,123 @@ function CatalogNameDisplay() {
       </button>
 }
 
+// ─── Star Map ─────────────────────────────────────────────────────────────────
+function StarMap({ starColor = '#ffffff', enabled = true }) {
+  const canvasRef    = useRef(null)
+  const enabledRef   = useRef(enabled)
+  const starColorRef = useRef(starColor)
+  useEffect(() => { enabledRef.current = enabled }, [enabled])
+  useEffect(() => { starColorRef.current = starColor }, [starColor])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+
+    const spawnStar = (W, H) => ({
+      x:     Math.random() * W,
+      y:     Math.random() * H,
+      r:     0.4 + Math.random() * 1.1,
+      dx:    (Math.random() - 0.5) * 0.10,
+      dy:    (Math.random() - 0.5) * 0.07,
+      base:  0.04 + Math.random() * 0.10,
+      speed: 0.4 + Math.random() * 0.9,
+      phase: Math.random() * Math.PI * 2,
+    })
+
+    let stars = []
+    let animId
+    // Beat detection state (persists across frames in closure)
+    let tBuf = null, beatBase = 0, beatInt = 0
+
+    const resize = () => {
+      canvas.width  = window.innerWidth
+      canvas.height = window.innerHeight
+      stars = Array.from({ length: 180 }, () => spawnStar(canvas.width, canvas.height))
+    }
+    window.addEventListener('resize', resize)
+    resize()
+
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      if (!enabledRef.current) { animId = requestAnimationFrame(draw); return }
+
+      // Real-time beat detection via shared AnalyserNode
+      let beat = 0.08  // ambient floor when no music
+      const analyser = _sharedAnalyser
+      if (analyser) {
+        if (!tBuf || tBuf.length !== analyser.fftSize) tBuf = new Uint8Array(analyser.fftSize)
+        analyser.getByteTimeDomainData(tBuf)
+        let sum = 0
+        for (let i = 0; i < tBuf.length; i++) { const v = (tBuf[i] - 128) / 128; sum += v * v }
+        const rms = Math.sqrt(sum / tBuf.length)
+        if (beatBase === 0) beatBase = Math.max(rms, 0.001)
+        beatBase = beatBase * 0.997 + rms * 0.003
+        const onset  = Math.max(0, (rms - beatBase * 0.5) / Math.max(beatBase * 1.5, 0.001))
+        const target = Math.min(onset, 1)
+        beatInt = target > beatInt ? beatInt * 0.4 + target * 0.6 : beatInt * 0.82 + target * 0.18
+        beat = beatInt
+      } else {
+        // No analyser: fade beat intensity back to ambient floor
+        beatInt = beatInt * 0.92 + 0.08 * 0.08
+        beat = beatInt
+      }
+
+      const nowT = performance.now() / 1000
+      const sc   = starColorRef.current
+      const W    = canvas.width
+      const H    = canvas.height
+
+      for (let i = 0; i < stars.length; i++) {
+        const st = stars[i]
+        st.x = (st.x + st.dx + W) % W
+        st.y = (st.y + st.dy + H) % H
+
+        const twinkle  = 0.5 + 0.5 * Math.sin(nowT * st.speed + st.phase)
+        const alpha    = Math.min(st.base * (0.5 + 0.5 * twinkle) + beat * 0.80, 0.95)
+        const glowBlur = beat * 20 * twinkle
+        const dotR     = st.r + beat * 2.5 * twinkle
+
+        ctx.save()
+        ctx.shadowColor = sc + Math.round(beat * 0.9 * 255).toString(16).padStart(2, '0')
+        ctx.shadowBlur  = glowBlur
+        ctx.globalAlpha = alpha
+        ctx.fillStyle   = sc
+        ctx.beginPath()
+        ctx.arc(st.x, st.y, dotR, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.restore()
+      }
+
+      animId = requestAnimationFrame(draw)
+    }
+    draw()
+    return () => { cancelAnimationFrame(animId); window.removeEventListener('resize', resize) }
+  }, []) // eslint-disable-line
+
+  return <canvas ref={canvasRef} style={{ position: 'fixed', inset: 0, zIndex: 0, pointerEvents: 'none' }} />
+}
+
 // ─── Catalog Panel ────────────────────────────────────────────────────────────
-function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
-  const [songs,   setSongs]   = useState([])
-  const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState('')
-  const [search,  setSearch]  = useState('')
-  const [sortBy,  setSortBy]  = useState('difficulty')
-  const [myLikes, setMyLikes] = useState(new Set())
-  const [likingId, setLikingId] = useState(null)
+function CatalogPanel({ onBack, onPlay, onPreview, onEdit, musicVolume }) {
+  const [songs,     setSongs]     = useState([])
+  const [loading,   setLoading]   = useState(true)
+  const [error,     setError]     = useState('')
+  const [search,    setSearch]    = useState('')
+  const [sortBy,    setSortBy]    = useState('difficulty')
+  const [myLikes,   setMyLikes]   = useState(new Set())
+  const [likingId,  setLikingId]  = useState(null)
+  const [selIdx,    setSelIdx]    = useState(0)
+  const [showSort,  setShowSort]  = useState(false)
+  const listRef    = useRef(null)
+  const searchRef  = useRef(null)
+  const itemRefs   = useRef([])
+  const ambientRef = useRef(null)
+
+  // Cleanup ambient audio on unmount
+  useEffect(() => {
+    return () => { ambientRef.current?.pause(); ambientRef.current = null }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -1018,7 +1149,7 @@ function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
       import('./supabase.js').then(({ fetchCatalog }) => fetchCatalog({ sortBy })),
       import('./supabase.js').then(({ fetchMyLikes }) => fetchMyLikes(GUEST_ID)),
     ])
-      .then(([data, liked]) => { if (!cancelled) { setSongs(data); setMyLikes(liked); setLoading(false) } })
+      .then(([data, liked]) => { if (!cancelled) { setSongs(data); setMyLikes(liked); setLoading(false); setSelIdx(0) } })
       .catch(err  => { if (!cancelled) { setError(err.message || 'Could not load catalog.'); setLoading(false) } })
     return () => { cancelled = true }
   }, [sortBy])
@@ -1046,119 +1177,300 @@ function CatalogPanel({ onBack, onPlay, onPreview, onEdit }) {
       const db = b.chart ? calcDifficulty(b.chart, b.bpm, b.subdivision) : 0
       return db - da
     }
-    return 0 // server already sorted for newest/plays/likes
+    return 0
   })
+
+  const clampedIdx = Math.min(selIdx, Math.max(0, filtered.length - 1))
+  const selected   = filtered[clampedIdx] || null
+
+  // Cleanup ambient + signal music stopped on unmount
+  useEffect(() => {
+    return () => { ambientRef.current?.pause(); ambientRef.current = null; emitMusic(false) }
+  }, [])
+
+  // Ambient audio: play selected song, looping. Debounced 400ms.
+  useEffect(() => {
+    const prev = ambientRef.current
+    if (prev) { prev.pause(); prev.src = ''; ambientRef.current = null }
+    const url = selected?.audioUrl
+    if (!url) { emitMusic(false); return }
+    const t = setTimeout(() => {
+      const audio = new Audio()
+      audio.crossOrigin = 'anonymous'
+      audio.src = url
+      audio.volume = Math.min(1, musicVolume ?? 1)
+      audio.loop = true
+      audio.play().catch(() => {})
+      connectSharedAnalyser(audio)
+      ambientRef.current = audio
+      emitMusic(true)
+    }, 400)
+    return () => { clearTimeout(t); ambientRef.current?.pause(); ambientRef.current = null }
+  }, [selected?.id]) // eslint-disable-line
+
+  // Scroll selected card into view
+  useEffect(() => {
+    const el = itemRefs.current[clampedIdx]
+    if (el) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+  }, [clampedIdx])
+
+  // Keyboard navigation — register once, read live values from refs to avoid re-registration on every arrow press
+  const filteredLenRef = useRef(0)
+  const selectedRef    = useRef(null)
+  const onPlayRef      = useRef(onPlay)
+  const onBackRef      = useRef(onBack)
+  filteredLenRef.current = filtered.length
+  selectedRef.current    = selected
+  onPlayRef.current      = onPlay
+  onBackRef.current      = onBack
+
+  useEffect(() => {
+    const handler = e => {
+      if (e.target === searchRef.current) return
+      if (e.key === 'ArrowDown') { e.preventDefault(); setSelIdx(i => Math.min(i + 1, filteredLenRef.current - 1)) }
+      else if (e.key === 'ArrowUp') { e.preventDefault(); setSelIdx(i => Math.max(i - 1, 0)) }
+      else if (e.key === 'Enter' && selectedRef.current) { e.preventDefault(); onPlayRef.current(selectedRef.current) }
+      else if (e.key === 'Escape') onBackRef.current()
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, []) // eslint-disable-line
 
   const fmtDur = sec => sec
     ? `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`
     : '--:--'
 
+  const selDiff = selected?.chart ? calcDifficulty(selected.chart, selected.bpm, selected.subdivision) : null
+  const selColor = selDiff !== null ? diffColor(selDiff) : '#ffffff'
+
+  const SORT_LABELS = [['difficulty','DIFFICULTY'],['newest','NEWEST'],['plays','POPULAR'],['likes','FEATURED']]
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#141414' }}>
+    <div style={{ display: 'flex', height: '100%', background: '#0a0a0a', overflow: 'hidden', fontFamily: 'Arial' }}>
+      <style>{`
+        @keyframes catalogSlideIn {
+          from { opacity: 0; transform: translateY(10px) }
+          to   { opacity: 1; transform: translateY(0) }
+        }
+        @keyframes catalogFadeIn {
+          from { opacity: 0 }
+          to   { opacity: 1 }
+        }
+        @keyframes accentPulse {
+          0%,100% { opacity: 0.5 }
+          50%      { opacity: 1 }
+        }
+        @keyframes rowSlideIn {
+          from { opacity: 0; transform: translateX(18px) }
+          to   { opacity: 1; transform: translateX(0) }
+        }
+        @keyframes heartPop {
+          0%   { transform: scale(1) }
+          40%  { transform: scale(1.5) }
+          100% { transform: scale(1) }
+        }
+        .cat-row { transition: background 0.12s, margin-left 0.14s cubic-bezier(0.2,0,0,1), border-color 0.12s; }
+        .cat-row:hover .cat-row-title { color: #bbb !important; }
+        .cat-row-selected .cat-row-title { color: #fff !important; }
+        .cat-btn { transition: background 0.1s, color 0.1s, border-color 0.1s, transform 0.08s, box-shadow 0.1s; }
+        .cat-btn:hover { transform: translateY(-1px); }
+        .cat-btn:active { transform: translateY(0) scale(0.97); }
+        .cat-play-btn:hover { box-shadow: 0 4px 20px var(--play-glow, #66ff9966); filter: brightness(1.1); }
+        .cat-search:focus { border-color: #333 !important; box-shadow: 0 0 0 2px #ffffff08; }
+        div::-webkit-scrollbar { width: 4px }
+        div::-webkit-scrollbar-track { background: transparent }
+        div::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px }
+      `}</style>
 
-      {/* Header */}
-      <div style={{ padding: '14px 20px', borderBottom: '1px solid #1e1e1e', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <TitleBarBtn onClick={onBack}>← BACK</TitleBarBtn>
-        <span style={{ fontFamily: 'Arial', fontSize: 9, color: '#fff', fontWeight: 'bold', letterSpacing: 3 }}>SONG CATALOG</span>
-        <CatalogNameDisplay />
-      </div>
+      {/* ── LEFT PANEL ── */}
+      <div style={{ width: 340, flexShrink: 0, display: 'flex', flexDirection: 'column', padding: '28px 28px 20px', borderRight: '1px solid #111', overflow: 'hidden', position: 'relative' }}>
 
-      {/* Controls */}
-      <div style={{ padding: '10px 20px', display: 'flex', gap: 10, alignItems: 'center', borderBottom: '1px solid #1a1a1a' }}>
-        <input
-          value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search songs or creators..."
-          style={{ flex: 1, fontFamily: 'Arial', fontSize: 12, color: '#fff', padding: '9px 12px', borderRadius: 5, background: '#111', border: '1px solid #2a2a2a', outline: 'none' }}
-          onFocus={e => e.target.style.borderColor = '#444'}
-          onBlur={e => e.target.style.borderColor = '#2a2a2a'} />
-        {[['difficulty', 'DIFFICULTY'], ['newest', 'NEWEST'], ['plays', 'POPULAR'], ['likes', 'FEATURED']].map(([val, lbl]) => (
-          <button key={val} onClick={() => setSortBy(val)}
-            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 13px', borderRadius: 5, border: `1px solid ${sortBy === val ? '#444' : '#222'}`, background: sortBy === val ? '#222' : 'transparent', color: sortBy === val ? '#fff' : '#444', cursor: 'pointer', transition: 'all 0.12s' }}>
-            {lbl}
+        {/* Glow blob behind detail */}
+        {selected && <div style={{ position: 'absolute', top: 60, left: -60, width: 300, height: 300, borderRadius: '50%', background: selColor + '08', filter: 'blur(60px)', pointerEvents: 'none', animation: 'accentPulse 3s ease-in-out infinite' }} />}
+
+        {/* Top bar */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 28 }}>
+          <button className="cat-btn" onClick={onBack}
+            style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 3, padding: '7px 12px', borderRadius: 4, background: 'transparent', border: '1px solid #222', color: '#444', cursor: 'pointer' }}>
+            ← BACK
           </button>
-        ))}
+          <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a', letterSpacing: 4, marginLeft: 'auto' }}>KRONOX</span>
+        </div>
+
+        {selected ? (
+          <div key={selected.id} style={{ display: 'flex', flexDirection: 'column', flex: 1, animation: 'catalogSlideIn 0.22s cubic-bezier(0.2,0,0,1)' }}>
+            {/* Diff badge */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+              <div style={{ fontFamily: 'Arial', fontSize: 9, letterSpacing: 2, color: selColor, padding: '3px 10px', borderRadius: 3, border: `1px solid ${selColor}44`, background: selColor + '18' }}>
+                {selDiff !== null ? `★ ${selDiff}` : '—'}
+              </div>
+              {selected.stars && <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#ffd93d', letterSpacing: 1 }}>{'★'.repeat(Math.round(Math.min(selected.stars, 10)))}</div>}
+            </div>
+
+            {/* Title */}
+            <div style={{ fontFamily: 'Arial', fontSize: 22, color: '#fff', fontWeight: 'bold', lineHeight: 1.2, marginBottom: 6, wordBreak: 'break-word' }}>
+              {selected.title}
+            </div>
+
+            {/* Creator */}
+            <div style={{ fontFamily: 'Arial', fontSize: 10, color: '#555', marginBottom: 20, letterSpacing: 1 }}>
+              {selected.creator}
+            </div>
+
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 16, marginBottom: 24, flexWrap: 'wrap' }}>
+              {[['BPM', selected.bpm], ['LENGTH', fmtDur(selected.duration)], ['PLAYS', (selected.plays || 0).toLocaleString()], ['LIKES', (selected.likes || 0).toLocaleString()]].map(([lbl, val]) => (
+                <div key={lbl}>
+                  <div style={{ fontSize: 6, color: '#333', letterSpacing: 2, marginBottom: 3 }}>{lbl}</div>
+                  <div style={{ fontSize: 13, color: '#888', fontWeight: 'bold' }}>{val}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* Accent line */}
+            <div style={{ height: 1, background: `linear-gradient(to right, ${selColor}66, transparent)`, marginBottom: 24, animation: 'accentPulse 2.5s ease-in-out infinite' }} />
+
+            {/* Buttons */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <button className="cat-btn cat-play-btn" onClick={() => onPlay(selected)}
+                style={{ '--play-glow': selColor + '66', fontFamily: 'Arial', fontSize: 9, letterSpacing: 3, padding: '14px 0', borderRadius: 5, background: selColor, color: '#000', border: 'none', fontWeight: 'bold', cursor: 'pointer', width: '100%' }}>
+                ▶  PLAY
+              </button>
+              <div style={{ display: 'flex', gap: 8 }}>
+                {selected.audioUrl && selected.chart && (
+                  <button className="cat-btn" onClick={() => onPreview(selected)}
+                    style={{ flex: 1, fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '10px 0', borderRadius: 5, background: 'transparent', color: '#555', border: '1px solid #222', cursor: 'pointer' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.borderColor = '#444' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#555'; e.currentTarget.style.borderColor = '#222' }}>
+                    ▷ PREVIEW
+                  </button>
+                )}
+                <button className="cat-btn" onClick={() => onPlay(selected, true)}
+                  style={{ flex: 1, fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '10px 0', borderRadius: 5, background: 'transparent', color: '#ffd93d', border: '1px solid #ffd93d33', cursor: 'pointer' }}
+                  onMouseEnter={e => { e.currentTarget.style.background = '#ffd93d18'; e.currentTarget.style.borderColor = '#ffd93d66' }}
+                  onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = '#ffd93d33' }}>
+                  AUTO
+                </button>
+                {selected.chart && (
+                  <button className="cat-btn" onClick={() => onEdit(selected)}
+                    style={{ flex: 1, fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '10px 0', borderRadius: 5, background: 'transparent', color: '#555', border: '1px solid #222', cursor: 'pointer' }}
+                    onMouseEnter={e => { e.currentTarget.style.color = '#aaa'; e.currentTarget.style.borderColor = '#444' }}
+                    onMouseLeave={e => { e.currentTarget.style.color = '#555'; e.currentTarget.style.borderColor = '#222' }}>
+                    EDIT
+                  </button>
+                )}
+                <button className="cat-btn" onClick={e => handleLike(e, selected)} disabled={!!likingId}
+                  style={{ flex: 1, fontFamily: 'Arial', fontSize: 11, padding: '10px 0', borderRadius: 5, background: myLikes.has(selected.id) ? '#2a0a12' : 'transparent', color: myLikes.has(selected.id) ? '#ff4466' : '#333', border: `1px solid ${myLikes.has(selected.id) ? '#ff446633' : '#222'}`, cursor: 'pointer', animation: myLikes.has(selected.id) ? 'heartPop 0.3s ease-out' : 'none' }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#ff4466'; e.currentTarget.style.borderColor = '#ff446644' }}
+                  onMouseLeave={e => { if (!myLikes.has(selected.id)) { e.currentTarget.style.color = '#333'; e.currentTarget.style.borderColor = '#222' } }}>
+                  ♥
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#222', fontSize: 11, letterSpacing: 2 }}>
+            {loading ? 'LOADING...' : 'NO SONGS'}
+          </div>
+        )}
+
+        <div style={{ marginTop: 'auto', paddingTop: 20 }}>
+          <div style={{ fontSize: 7, color: '#1e1e1e', letterSpacing: 1, marginBottom: 8 }}>↑ ↓ navigate · ENTER play · ESC back</div>
+          <CatalogNameDisplay />
+        </div>
       </div>
 
-      {/* Song list */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '12px 20px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        {loading && (
-          <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#444', textAlign: 'center', padding: '48px 0' }}>Loading...</div>
-        )}
-        {error && (
-          <div style={{ fontFamily: 'Arial', fontSize: 11, color: '#ff6666', textAlign: 'center', padding: '40px 24px', lineHeight: 1.8 }}>
-            {error}
-            <br />
-            <span style={{ color: '#333', fontSize: 9 }}>Add your Supabase config to a .env file — see .env.example</span>
-          </div>
-        )}
-        {!loading && !error && filtered.length === 0 && (
-          <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#333', textAlign: 'center', padding: '48px 0' }}>
-            {search ? 'No songs match your search.' : 'No songs published yet. Be the first!'}
-          </div>
-        )}
+      {/* ── RIGHT PANEL ── */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
 
-        {filtered.map(song => {
-          const diff    = song.chart ? calcDifficulty(song.chart, song.bpm, song.subdivision) : null
-          const liked   = myLikes.has(song.id)
-          return (
-          <div key={song.id}
-            style={{ display: 'grid', gridTemplateColumns: '1fr auto', alignItems: 'center', gap: 14, padding: '14px 16px', background: '#111', borderRadius: 6, border: '1px solid #1a1a1a', transition: 'border-color 0.12s' }}
-            onMouseEnter={e => e.currentTarget.style.borderColor = '#2a2a2a'}
-            onMouseLeave={e => e.currentTarget.style.borderColor = '#1a1a1a'}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 5 }}>
-                <span style={{ fontFamily: 'Arial', fontSize: 13, color: '#fff', fontWeight: 'bold' }}>{song.title}</span>
+        {/* Search + sort */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px 14px 20px', borderBottom: '1px solid #111', flexShrink: 0 }}>
+          <input ref={searchRef} className="cat-search"
+            value={search} onChange={e => { setSearch(e.target.value); setSelIdx(0) }}
+            placeholder="Search songs or creators..."
+            style={{ flex: 1, fontFamily: 'Arial', fontSize: 12, color: '#fff', padding: '8px 12px', borderRadius: 5, background: '#111', border: '1px solid #1e1e1e', outline: 'none', transition: 'border-color 0.15s, box-shadow 0.15s' }} />
+          <div style={{ position: 'relative' }}>
+            <button className="cat-btn" onClick={() => setShowSort(s => !s)}
+              style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '8px 14px', borderRadius: 5, background: '#111', border: '1px solid #222', color: '#555', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              {SORT_LABELS.find(([v]) => v === sortBy)?.[1] || 'SORT'} ▾
+            </button>
+            {showSort && (
+              <div style={{ position: 'absolute', right: 0, top: '110%', background: '#0f0f0f', border: '1px solid #222', borderRadius: 5, overflow: 'hidden', zIndex: 100, minWidth: 130, animation: 'catalogFadeIn 0.12s ease-out' }}>
+                {SORT_LABELS.map(([val, lbl]) => (
+                  <button key={val} onClick={() => { setSortBy(val); setShowSort(false); setSelIdx(0) }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', fontFamily: 'Arial', fontSize: 7, letterSpacing: 2, padding: '10px 14px', background: sortBy === val ? '#1a1a1a' : 'transparent', color: sortBy === val ? '#fff' : '#444', border: 'none', cursor: 'pointer', transition: 'background 0.1s, color 0.1s' }}
+                    onMouseEnter={e => { if (sortBy !== val) { e.currentTarget.style.background = '#141414'; e.currentTarget.style.color = '#888' } }}
+                    onMouseLeave={e => { if (sortBy !== val) { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = '#444' } }}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Song list */}
+        <div ref={listRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 0 30px' }}>
+          {loading && <div style={{ color: '#333', fontSize: 12, textAlign: 'center', padding: '60px 0' }}>Loading...</div>}
+          {error && <div style={{ color: '#ff6666', fontSize: 11, textAlign: 'center', padding: '60px 24px', lineHeight: 1.8 }}>{error}</div>}
+          {!loading && !error && filtered.length === 0 && (
+            <div style={{ color: '#2a2a2a', fontSize: 12, textAlign: 'center', padding: '60px 0' }}>{search ? 'No results.' : 'No songs yet.'}</div>
+          )}
+          {filtered.map((song, i) => {
+            const diff   = song.chart ? calcDifficulty(song.chart, song.bpm, song.subdivision) : null
+            const dColor = diff !== null ? diffColor(diff) : '#444'
+            const isSel  = i === clampedIdx
+            return (
+              <div key={song.id}
+                ref={el => itemRefs.current[i] = el}
+                className={`cat-row${isSel ? ' cat-row-selected' : ''}`}
+                onClick={() => setSelIdx(i)}
+                onDoubleClick={() => onPlay(song)}
+                onMouseEnter={e => {
+                  if (isSel) return
+                  const el = e.currentTarget
+                  el.style.marginLeft = '8px'
+                  el.style.background = '#0e0e0e'
+                  el.style.borderLeftColor = dColor + '55'
+                }}
+                onMouseLeave={e => {
+                  if (isSel) return
+                  const el = e.currentTarget
+                  el.style.marginLeft = '20px'
+                  el.style.background = 'transparent'
+                  el.style.borderLeftColor = 'transparent'
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 14,
+                  padding: '11px 20px',
+                  marginLeft: isSel ? 0 : 20,
+                  background: isSel ? '#161616' : 'transparent',
+                  borderLeft: isSel ? `3px solid ${dColor}` : '3px solid transparent',
+                  borderBottom: '1px solid #0d0d0d',
+                  cursor: 'pointer',
+                  transition: 'margin-left 0.13s cubic-bezier(0.2,0,0,1), background 0.1s, border-color 0.1s',
+                }}>
+                {/* Index */}
+                <div style={{ width: 24, textAlign: 'right', fontSize: 9, color: isSel ? '#555' : '#1e1e1e', flexShrink: 0 }}>{i + 1}</div>
+                {/* Text */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div className="cat-row-title" style={{ fontSize: 13, color: isSel ? '#fff' : '#555', fontWeight: isSel ? 'bold' : 'normal', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: 3 }}>
+                    {song.title}
+                  </div>
+                  <div style={{ fontSize: 8, color: isSel ? '#444' : '#2a2a2a', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {song.creator}  ·  {song.bpm} BPM  ·  {fmtDur(song.duration)}
+                  </div>
+                </div>
+                {/* Diff badge */}
                 {diff !== null && (
-                  <span style={{ fontFamily: 'Arial', fontSize: 7, letterSpacing: 1, color: diffColor(diff), background: diffColor(diff) + '18', padding: '2px 7px', borderRadius: 3, flexShrink: 0 }}>
+                  <div style={{ fontSize: 8, color: dColor, background: isSel ? dColor + '22' : dColor + '0d', padding: '2px 8px', borderRadius: 3, flexShrink: 0, letterSpacing: 1 }}>
                     ★ {diff}
-                  </span>
+                  </div>
                 )}
               </div>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
-                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#555' }}>{song.creator}</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{song.bpm} BPM</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{fmtDur(song.duration)}</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 7, color: '#2a2a2a' }}>·</span>
-                <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444' }}>{(song.plays || 0).toLocaleString()} plays</span>
-              </div>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-              <button onClick={e => handleLike(e, song)} disabled={!!likingId}
-                style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 8px', borderRadius: 5, background: liked ? '#2a1a1a' : 'transparent', color: liked ? '#ff4466' : '#333', border: `1px solid ${liked ? '#ff446633' : '#222'}`, cursor: 'pointer', transition: 'all 0.12s', display: 'flex', alignItems: 'center', gap: 4, whiteSpace: 'nowrap', flexShrink: 0 }}>
-                <span>♥</span><span style={{ fontSize: 10 }}>{(song.likes || 0).toLocaleString()}</span>
-              </button>
-              {song.audioUrl && song.chart && (
-                <button onClick={e => { e.stopPropagation(); onPreview(song) }}
-                  style={{ fontFamily: 'Arial', fontSize: 11, padding: '7px 10px', borderRadius: 5, background: 'transparent', color: '#444', border: '1px solid #222', cursor: 'pointer', transition: 'all 0.12s', whiteSpace: 'nowrap' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#6699ff'; e.currentTarget.style.borderColor = '#4488ff44' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#444'; e.currentTarget.style.borderColor = '#222' }}>
-                  ▷ 15s
-                </button>
-              )}
-              {song.chart && (
-                <button onClick={e => { e.stopPropagation(); onEdit(song) }}
-                  style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 12px', borderRadius: 5, background: 'transparent', color: '#888', border: '1px solid #333', cursor: 'pointer', transition: 'all 0.12s' }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = '#555' }}
-                  onMouseLeave={e => { e.currentTarget.style.color = '#888'; e.currentTarget.style.borderColor = '#333' }}>
-                  EDIT
-                </button>
-              )}
-              <button onClick={() => onPlay(song)}
-                style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 16px', borderRadius: 5, background: '#66ff99', color: '#111', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}>
-                PLAY
-              </button>
-              <button onClick={() => onPlay(song, true)}
-                style={{ fontFamily: 'Arial', fontSize: 8, letterSpacing: 2, padding: '9px 12px', borderRadius: 5, background: 'transparent', color: '#ffd93d', border: '1px solid #ffd93d44', fontWeight: 'bold', cursor: 'pointer', transition: 'all 0.12s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = '#ffd93d11' }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent' }}>
-                ▶▶
-              </button>
-            </div>
-          </div>
-          )
-        })}
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -1254,9 +1566,10 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     // path (stale closure on mount) still gets the correct saved volume.
     audio.volume = (musicVolume ?? loadSettings().musicVolume) ?? 1.0
     audio.addEventListener('timeupdate', () => setPreviewPos(audio.currentTime))
-    audio.addEventListener('play',  () => setIsPlaying(true))
-    audio.addEventListener('pause', () => setIsPlaying(false))
-    audio.addEventListener('ended', () => setIsPlaying(false))
+    connectSharedAnalyser(audio)
+    audio.addEventListener('play',  () => { setIsPlaying(true);  emitMusic(true)  })
+    audio.addEventListener('pause', () => { setIsPlaying(false); emitMusic(false) })
+    audio.addEventListener('ended', () => { setIsPlaying(false); emitMusic(false) })
     audioRef.current = audio
   }
 
@@ -1824,7 +2137,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
   }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', overflowX: 'hidden', padding: '1.5rem', gap: '1.25rem', background: '#141414' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflowY: 'auto', overflowX: 'hidden', padding: '1.5rem', gap: '1.25rem', background: '#0a0a0a' }}>
       <div>
         <div style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', fontWeight: 'bold', marginBottom: 6 }}>KRONOX</div>
         <div style={{ fontFamily: 'Arial', fontSize: 13, color: '#888' }}>Build your chart, then play it back</div>
@@ -1834,7 +2147,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       <div style={{ display: 'grid', gridTemplateColumns: window.innerWidth < 600 ? '1fr' : '2fr 1fr', gap: '1rem' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <FieldLabel>SONG FILE</FieldLabel>
-          <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 6, cursor: 'pointer', background: '#1a1a1a', border: `2px dashed ${songFile ? '#66ff99' : '#333'}`, transition: 'all 0.2s', overflow: 'hidden', minWidth: 0 }}>
+          <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', borderRadius: 6, cursor: 'pointer', background: '#111', border: `2px dashed ${songFile ? '#66ff99' : '#2a2a2a'}`, transition: 'all 0.2s', overflow: 'hidden', minWidth: 0 }}>
             <span style={{ width: 8, height: 8, borderRadius: '50%', background: songFile ? '#66ff99' : '#333', flexShrink: 0 }} />
             <span style={{ fontFamily: 'Arial', fontSize: 14, color: songFile ? '#fff' : '#555', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 }}>
               {songFile ? songFile.name : 'Click to upload MP3/OGG/WAV'}
@@ -1845,14 +2158,14 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 0 }}>
           <FieldLabel>SONG TITLE</FieldLabel>
           <input value={songTitle} onChange={e => { setSongTitle(e.target.value); saveSettings({ songTitle: e.target.value }) }}
-            style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', padding: '12px 14px', borderRadius: 6, background: '#1a1a1a', border: '1px solid #333', outline: 'none', width: '100%', boxSizing: 'border-box' }}
-            onFocus={e => e.target.style.borderColor = '#666'} onBlur={e => e.target.style.borderColor = '#333'} />
+            style={{ fontFamily: 'Arial', fontSize: 14, color: '#fff', padding: '12px 14px', borderRadius: 6, background: '#111', border: '1px solid #222', outline: 'none', width: '100%', boxSizing: 'border-box' }}
+            onFocus={e => e.target.style.borderColor = '#555'} onBlur={e => e.target.style.borderColor = '#222'} />
         </div>
       </div>
 
       {/* Preview player */}
       {songFile && (
-        <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
             <button onClick={playPreview} style={{ fontFamily: 'Arial', fontSize: 12, padding: '6px 14px', background: isPlaying ? '#444' : '#ff4d8f', color: '#fff', border: 'none', borderRadius: 4, fontWeight: 'bold', cursor: 'pointer' }}>
               {isPlaying ? '⏸ PAUSE' : '▶ PLAY'}
@@ -1902,14 +2215,14 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
             </div>
           </div>
           {songFile && (
-            <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '8px 12px', height: 40, display: 'flex', alignItems: 'center' }}>
-              <div style={{ height: 24, width: '100%', position: 'relative', background: '#111', borderRadius: 3 }}>
+            <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '8px 12px', height: 40, display: 'flex', alignItems: 'center' }}>
+              <div style={{ height: 24, width: '100%', position: 'relative', background: '#0a0a0a', borderRadius: 3 }}>
                 {chart.map((row, b) => row.some(n => n > 0) ? <div key={b} style={{ position: 'absolute', left: (b / chart.length * 100) + '%', top: 0, bottom: 0, width: 2, background: '#ff4d8f', opacity: 0.6 }} /> : null)}
                 {isFinite(audioRef.current?.duration) && audioRef.current.duration > 0 && <div style={{ position: 'absolute', left: (previewPos / audioRef.current.duration * 100) + '%', top: 0, bottom: 0, width: 2, background: '#66ff99' }} />}
               </div>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#1a1a1a', borderRadius: 6, border: '1px solid #2a2a2a', padding: '12px', minHeight: window.innerWidth < 600 ? 220 : 0, maxHeight: window.innerWidth < 600 ? 280 : 340, overflow: 'hidden' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8, background: '#111', borderRadius: 6, border: '1px solid #1a1a1a', padding: '12px', minHeight: window.innerWidth < 600 ? 220 : 0, maxHeight: window.innerWidth < 600 ? 280 : 340, overflow: 'hidden' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '28px repeat(4, 1fr)', gap: 4 }}>
               <div />
               {['L', 'D', 'U', 'R'].map((n, i) => (<div key={i} style={{ display: 'flex', justifyContent: 'center' }}><span style={{ fontFamily: 'Arial', fontSize: 7, color: LANE_COLORS[i], letterSpacing: 1 }}>{n}</span></div>))}
@@ -1947,7 +2260,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       {/* Record mode */}
       {activeTab === 'record' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-          <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#fff', letterSpacing: 2, fontWeight: 'bold' }}>HOW IT WORKS</div>
             <div style={{ fontFamily: 'Arial', fontSize: 12, color: '#888', lineHeight: 1.6 }}>Press and hold keys in time to the music. Taps = single notes. Hold 200ms+ = hold note.</div>
             <div style={{ display: 'flex', gap: 16, marginTop: 4 }}>
@@ -1964,7 +2277,7 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           {!isRecording && !recordChart && recordCountdown === null && (
             <>
               {/* Slow mode settings */}
-              <div style={{ background: '#1a1a1a', border: '1px solid #222', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
                     <div style={{ width: 5, height: 5, borderRadius: '50%', background: slowModeEnabled ? '#ff4d8f' : '#555' }} />
@@ -2012,14 +2325,14 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
             </>
           )}
           {recordCountdown !== null && (
-            <div style={{ position: 'relative', border: '1px solid #2a2a2a', borderRadius: 6, overflow: 'hidden', height: 120, background: '#141414', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ position: 'relative', border: '1px solid #1a1a1a', borderRadius: 6, overflow: 'hidden', height: 120, background: '#0a0a0a', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <span style={{ fontFamily: 'Arial', fontSize: 8, color: '#444', letterSpacing: 3, position: 'absolute', top: 10, left: 0, right: 0, textAlign: 'center' }}>GET READY</span>
               <CountdownOverlay count={recordCountdown} />
             </div>
           )}
           {isRecording && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ position: 'relative', background: '#1a1a1a', border: `1px solid ${isRecPaused ? '#ffd93d44' : '#ff4d8f44'}`, borderRadius: 6, padding: '16px', display: 'flex', alignItems: 'center', gap: 12, overflow: 'hidden' }}>
+              <div style={{ position: 'relative', background: '#111', border: `1px solid ${isRecPaused ? '#ffd93d44' : '#ff4d8f44'}`, borderRadius: 6, padding: '16px', display: 'flex', alignItems: 'center', gap: 12, overflow: 'hidden' }}>
                 {isRecPaused
                   ? <div style={{ width: 10, height: 10, borderRadius: 2, background: '#ffd93d', flexShrink: 0 }} />
                   : <><div style={{ width: 10, height: 10, borderRadius: '50%', background: '#ff4d8f', animation: 'recPulse 0.8s ease-in-out infinite', flexShrink: 0 }} />
@@ -2061,9 +2374,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
           )}
           {recordChart && !isRecording && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-              <div style={{ background: '#1a1a1a', border: '1px solid #2a2a2a', borderRadius: 6, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ background: '#111', border: '1px solid #1a1a1a', borderRadius: 6, padding: '12px', display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ fontFamily: 'Arial', fontSize: 9, color: '#66ff99', letterSpacing: 2, fontWeight: 'bold' }}>DONE — {recordChart.flat().filter(v => v > 0).length} NOTES</div>
-                <div style={{ height: 28, background: '#111', borderRadius: 3, position: 'relative', overflow: 'hidden' }}>
+                <div style={{ height: 28, background: '#0a0a0a', borderRadius: 3, position: 'relative', overflow: 'hidden' }}>
                   {recordChart.map((row, b) => row.some(n => n > 0) ? <div key={b} style={{ position: 'absolute', left: (b / recordChart.length * 100) + '%', top: 0, bottom: 0, width: 2, background: '#ff4d8f', opacity: 0.7 }} /> : null)}
                 </div>
               </div>
@@ -2226,6 +2539,7 @@ function GameView({ config, onStop }) {
       src.connect(analyser)
       analyser.connect(ctx.destination)
       analyserRef.current = analyser
+      _sharedAnalyser = analyser  // share with StarMap
     } catch { /* may fail if context limit hit */ }
   }, [])
 
@@ -3096,7 +3410,7 @@ function Results({ stats, onExit, onPlayAgain }) {
 
   return (
     <div style={{
-      position: 'fixed', inset: 0, background: '#0b0b0b',
+      position: 'fixed', inset: 0, background: '#0a0a0a',
       display: 'flex', flexDirection: 'column',
       opacity: fadeOut ? 0 : 1, transition: 'opacity 0.38s',
       overflow: 'auto', fontFamily: 'Arial, sans-serif',
@@ -3402,8 +3716,16 @@ export default function App() {
     setScreen('setup')
   }
 
+  // Emit music active/inactive when navigating to/from game or non-music screens
+  useEffect(() => {
+    if (screen === 'game') emitMusic(true)
+    else if (screen === 'setup' || screen === 'results') emitMusic(false)
+    // 'catalog' manages its own via ambient audio ref
+  }, [screen])
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#111', overflow: 'hidden' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100dvh', background: '#0a0a0a', overflow: 'hidden' }}>
+      <StarMap starColor={starColor} enabled={showStars} />
       {screen !== 'catalog' && (
         <TitleBar
           onToggleSettings={() => setShowSettings(s => !s)}
@@ -3445,6 +3767,7 @@ export default function App() {
             onPlay={handlePlayFromCatalog}
             onPreview={handlePreviewFromCatalog}
             onEdit={handleEditFromCatalog}
+            musicVolume={musicVolume}
           />
         )}
       </div>
