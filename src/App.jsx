@@ -2332,7 +2332,7 @@ function GameView({ config, onStop }) {
 
   const spawnPhantom = useCallback((note) => {
     const noteColor = laneColors[note.lane]
-    const y = note.yFromBottom ?? RECEPTOR_BOTTOM
+    const y = RECEPTOR_BOTTOM  // always spawn at visual receptor, not note's current position
     const lEl = getLaneEl(note.lane)
     if (!lEl) return
     const ph = document.createElement('div')
@@ -2381,7 +2381,9 @@ function GameView({ config, onStop }) {
     const audio = audioRef.current; if (!audio) return
     const nowMs = audio.currentTime * 1000 - audioOffsetRef.current
     const [wP, wG, wOk, wB] = config.mode3d ? [110, 140, 180, 231] : [45, 80, 115, 150]
-    const wMiss = config.mode3d ? 280 : 180  // tapping outside catch window within this range = MISS
+    const BASE_RECEPTOR = 70
+    const extraMs = Math.max(0, (RECEPTOR_BOTTOM - BASE_RECEPTOR) / (config.speed * 0.35))
+    const wMiss = (config.mode3d ? 280 : 180) + extraMs
 
     let closest = null, minDist = Infinity
     for (const n of s.activeNotes) {
@@ -2754,10 +2756,12 @@ function GameView({ config, onStop }) {
             }
           }
 
-          // Miss if scrolls past receptor area OR past the BAD window (only for manual play)
+          // Miss if scrolled below the fixed base floor OR past the extended BAD window (only for manual play)
+          const BASE_RECEPTOR = 70
           const msLate = nowMs - note.hitTimeMs
-          const wBrAF = config.mode3d ? 300 : 100
-          if (!config.autoplay && !isBeingHeld && !note.hit && (yFromBottom < -100 || msLate > wBrAF)) doMiss(note)
+          const extraMs = Math.max(0, (RECEPTOR_BOTTOM - BASE_RECEPTOR) / (config.speed * 0.35))
+          const wBrAF = (config.mode3d ? 300 : 100) + extraMs
+          if (!config.autoplay && !isBeingHeld && !note.hit && (yFromBottom < -(RECEPTOR_BOTTOM - BASE_RECEPTOR) - 30 || msLate > wBrAF)) doMiss(note)
         }
 
         s.activeNotes = s.activeNotes.filter(n => !n.hit)
