@@ -1726,10 +1726,13 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     const subdivMs  = (60000 / bpm) / subdivision
     const endCi     = Math.max(0, Math.min(Math.round(endMs / subdivMs), recordChartRef.current.length - 1))
     const newChart  = recordChartRef.current.map(r => [...r])
-    if (endMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > info.subdivIdx) {
-      newChart[info.subdivIdx][lane] = endCi - info.subdivIdx + 1
-      for (let i = info.subdivIdx + 1; i <= endCi; i++) newChart[i][lane] = -1
-    } else { newChart[info.subdivIdx][lane] = 1 }
+    // Re-check slot in case something else was written there since keydown
+    let startCi = info.subdivIdx
+    while (startCi < newChart.length - 1 && newChart[startCi][lane] !== 0) startCi++
+    if (endMs - info.timeMs >= HOLD_THRESHOLD_MS && endCi > startCi) {
+      newChart[startCi][lane] = endCi - startCi + 1
+      for (let i = startCi + 1; i <= endCi; i++) newChart[i][lane] = -1
+    } else { newChart[startCi][lane] = 1 }
     recordChartRef.current = newChart
   }, [bpm, subdivision, HOLD_THRESHOLD_MS])
 
@@ -1737,7 +1740,8 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
     if (!isRecording || !recordChartRef.current) return
     const subdivMs = (60000 / bpm) / subdivision
     const nowMs = audioRef.current?.currentTime * 1000 || 0
-    const ci = Math.max(0, Math.min(Math.round(nowMs / subdivMs), recordChartRef.current.length - 1))
+    let ci = Math.max(0, Math.min(Math.floor(nowMs / subdivMs), recordChartRef.current.length - 1))
+    while (ci < recordChartRef.current.length - 1 && recordChartRef.current[ci][lane] !== 0) ci++
     recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
   }, [isRecording, bpm, subdivision])
 
@@ -1774,7 +1778,9 @@ function SetupPanel({ onStart, keybinds, laneColors: savedLaneColors, onOpenPubl
       e.preventDefault()
       const nowMs  = audioRef.current?.currentTime * 1000 || 0
       const subMs  = (60000 / bpm) / subdivision
-      const ci = Math.max(0, Math.min(Math.round(nowMs / subMs), recordChartRef.current.length - 1))
+      let ci = Math.max(0, Math.min(Math.floor(nowMs / subMs), recordChartRef.current.length - 1))
+      // Bump forward if this slot is already occupied for this lane (prevents clumping)
+      while (ci < recordChartRef.current.length - 1 && recordChartRef.current[ci][lane] !== 0) ci++
       recordKeyDownRef.current[lane] = { timeMs: nowMs, subdivIdx: ci }
     }
     const handleUp = e => {
@@ -2332,7 +2338,8 @@ function GameView({ config, onStop }) {
 
   const spawnPhantom = useCallback((note) => {
     const noteColor = laneColors[note.lane]
-    const y = RECEPTOR_BOTTOM  // always spawn at visual receptor, not note's current position
+    // Use note's current visual position, but never below the receptor (clamp to avoid bottom-of-screen glitch)
+    const y = note.yFromBottom > RECEPTOR_BOTTOM * 0.5 ? note.yFromBottom : RECEPTOR_BOTTOM
     const lEl = getLaneEl(note.lane)
     if (!lEl) return
     const ph = document.createElement('div')
