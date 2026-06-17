@@ -463,7 +463,9 @@ export class GameEngine {
       if (judgment !== 'miss') {
         this.laneFlashes.push({ lane: note.lane, birth: performance.now() })
       }
-      this.audio.playHitSfx()
+      if (!isRelease) {
+        this.audio.playHitSfx()
+      }
     }
 
     this._showJudge(judgment, offMs, lane)
