@@ -1,0 +1,17 @@
+.panel {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  transition: transform var(--transition-base), box-shadow var(--transition-base), border-color var(--transition-base);
+}
+
+.padding {
+  padding: var(--space-4);
+}
+
+@media (hover: hover) {
+  .panel:hover {
+    border-color: var(--border-strong);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  }
+}

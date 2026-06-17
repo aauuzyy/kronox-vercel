@@ -1,0 +1,656 @@
+.screen {
+  flex: 1;
+  overflow: auto;
+  padding: var(--space-6) var(--space-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  animation: screenIn 0.25s ease-out;
+}
+
+@media (max-width: 600px) {
+  .screen {
+    padding: var(--space-4);
+    gap: var(--space-4);
+  }
+}
+
+.title {
+  font-size: 26px;
+  font-weight: 800;
+  margin: 0;
+  letter-spacing: -0.02em;
+  animation: fadeIn 0.4s ease-out;
+}
+
+.subtitle {
+  color: var(--text-muted);
+  margin: var(--space-1) 0 0;
+  font-size: 14px;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.topGrid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: var(--space-4);
+  animation: slideUp 0.35s ease-out;
+}
+
+@media (max-width: 600px) {
+  .topGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.fileDrop {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-elevated);
+  border: 2px dashed var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: transform var(--transition-base), border-color var(--transition-base), background var(--transition-base);
+}
+
+.fileDrop:hover {
+  border-color: var(--border-strong);
+  background: rgba(255, 255, 255, 0.03);
+  transform: translateY(-2px);
+}
+
+.fileDrop:active {
+  transform: translateY(0);
+}
+
+.hiddenInput {
+  display: none;
+}
+
+.fileDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-dim);
+  flex-shrink: 0;
+  transition: background var(--transition-base), transform var(--transition-base);
+}
+
+.fileDrop:hover .fileDot {
+  transform: scale(1.2);
+}
+
+.fileDotActive {
+  background: var(--success);
+}
+
+.fileName {
+  font-size: 14px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.textInput {
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+  transition: border-color var(--transition-base), box-shadow var(--transition-base), transform var(--transition-fast);
+}
+
+.textInput:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08);
+}
+
+.textInput:hover:not(:focus) {
+  border-color: var(--border-strong);
+}
+
+.playerPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  animation: popIn 0.3s ease-out;
+}
+
+.playerRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.playerTime {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.playerTrack {
+  height: 5px;
+  background: var(--bg-input);
+  border-radius: 999px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: background var(--transition-base);
+}
+
+.playerTrack:hover {
+  background: var(--border);
+}
+
+.playerFill {
+  height: 100%;
+  background: var(--danger);
+  border-radius: 999px;
+  transition: width 0.1s linear;
+}
+
+.sliders {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-4);
+  animation: slideUp 0.4s ease-out;
+}
+
+@media (max-width: 600px) {
+  .sliders {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Recording stage */
+.recordStage {
+  flex: 1;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  animation: fadeIn 0.45s ease-out;
+}
+
+.recordPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  text-align: center;
+  padding: var(--space-8);
+  color: var(--text-muted);
+}
+
+.recordPlaceholderIcon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--bg-input);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  animation: recPulse 1.6s ease-in-out infinite;
+}
+
+.sectionTitle {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text);
+  margin: 0;
+}
+
+.recordIdle {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-4);
+  animation: popIn 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.recordKeys {
+  display: flex;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.recordKey {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: 10px;
+  color: var(--text-muted);
+  letter-spacing: 0.05em;
+  animation: fadeIn 0.5s ease-out;
+}
+
+.recordKeyCircle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 1.5px solid;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform var(--transition-fast), box-shadow var(--transition-base);
+}
+
+.recordKey:hover .recordKeyCircle {
+  transform: scale(1.08);
+}
+
+.recordActions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recordBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.recordDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--danger);
+  box-shadow: 0 0 8px var(--danger);
+  animation: recPulseDot 1.2s ease-in-out infinite;
+}
+
+.recordStat {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.recordHint {
+  color: var(--text-muted);
+  font-size: 12px;
+  margin: 0;
+  text-align: center;
+}
+
+.recordCountdown {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  animation: fadeIn 0.2s ease-out;
+}
+
+.countdownBig {
+  font-size: 120px;
+  font-weight: 900;
+  color: var(--text);
+  line-height: 1;
+  animation: countPop 0.85s ease-out forwards;
+}
+
+.recordActive {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  animation: popIn 0.3s ease-out;
+}
+
+.recordingPanel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.recordingDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--danger);
+  animation: recPulse 0.8s ease-in-out infinite;
+}
+
+.recordingTitle {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.recordingSub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.recordTouchGrid {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3);
+  min-height: 220px;
+}
+
+.recordTouchBtn {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  border-radius: var(--radius-lg);
+  border: 2px solid color-mix(in srgb, var(--lane-color) 40%, transparent);
+  background: color-mix(in srgb, var(--lane-color) 10%, transparent);
+  color: color-mix(in srgb, var(--lane-color) 80%, transparent);
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform var(--transition-fast), background var(--transition-base), border-color var(--transition-base), box-shadow var(--transition-base);
+}
+
+.recordTouchBtn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at center, var(--lane-color) 0%, transparent 70%);
+  opacity: 0;
+  transform: scale(0.6);
+  transition: opacity var(--transition-base), transform var(--transition-base);
+}
+
+.recordTouchBtn:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--lane-color) 70%, transparent);
+  background: color-mix(in srgb, var(--lane-color) 16%, transparent);
+}
+
+.recordTouchBtnActive,
+.recordTouchBtn:active {
+  transform: scale(0.96);
+  border-color: var(--lane-color);
+  background: color-mix(in srgb, var(--lane-color) 35%, transparent);
+  box-shadow: 0 0 24px color-mix(in srgb, var(--lane-color) 40%, transparent);
+}
+
+.recordTouchBtnActive::before,
+.recordTouchBtn:active::before {
+  opacity: 0.25;
+  transform: scale(1);
+}
+
+.recordTouchLabel,
+.recordTouchKey {
+  position: relative;
+  z-index: 1;
+}
+
+.recordTouchLabel {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.recordTouchKey {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recordControls {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.recordedActions {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: var(--space-3);
+  animation: popIn 0.35s ease-out;
+}
+
+.recordedInfoPanel {
+  text-align: center;
+}
+
+.recordedInfo {
+  font-size: 14px;
+  color: var(--success);
+  font-weight: 600;
+}
+
+.recordedButtons {
+  display: flex;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.bottomBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding-top: var(--space-2);
+  animation: slideUp 0.5s ease-out;
+}
+
+.bottomLeft,
+.bottomRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.diffBadge {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+@keyframes recPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.4; transform: scale(0.7); }
+}
+
+@keyframes recPulseDot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.85); }
+}
+
+@keyframes recPulseShadow {
+  0%, 100% { box-shadow: 0 12px 32px rgba(255, 255, 255, 0.12); }
+  50% { box-shadow: 0 12px 40px rgba(255, 255, 255, 0.28); }
+}
+
+@keyframes countPop {
+  0% { transform: scale(1.7); opacity: 0; }
+  35% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes popIn {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.catalogPanel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  animation: slideUp 0.4s ease-out;
+}
+
+.catalogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.catalogStatus {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.catalogError {
+  font-size: 12px;
+  color: var(--danger);
+}
+
+.catalogEmpty {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: var(--space-3) 0;
+}
+
+.catalogList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.catalogRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  transition: background var(--transition-base), border-color var(--transition-base), transform var(--transition-fast);
+}
+
+.catalogRow:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border-strong);
+}
+
+.catalogInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.catalogTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.catalogCreator {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.catalogRight {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-shrink: 0;
+}
+
+.catalogDiff {
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.catalogLoadBtn {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: #000;
+  border: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: transform var(--transition-fast), box-shadow var(--transition-base);
+}
+
+.catalogLoadBtn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(255, 255, 255, 0.15);
+}
+
+.catalogLoadBtn:active {
+  transform: translateY(0) scale(0.96);
+}
+
+.catalogErrorRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.catalogRetryBtn {
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background var(--transition-base), border-color var(--transition-base);
+}
+
+.catalogRetryBtn:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border-strong);
+}
+
+.catalogOfflineNote {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: var(--space-1) 0;
+}

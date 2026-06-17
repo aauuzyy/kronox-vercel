@@ -1,0 +1,859 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KRONOX — Rhythm</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Syncopate:wght@400;700&family=Sedgwick+Ave+Display&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body class="bg-black text-white overflow-hidden select-none">
+
+  <!-- Animated Background Grid -->
+  <div class="fixed inset-0 z-0">
+    <div class="absolute inset-0 grid-bg"></div>
+    <div class="absolute inset-0 grid-lines"></div>
+  </div>
+
+  <!-- Floating Particles -->
+  <canvas id="particles" class="fixed inset-0 z-0 opacity-30"></canvas>
+
+  <!-- Vignette -->
+  <div class="fixed inset-0 z-10 pointer-events-none vignette"></div>
+
+  <!-- Film Grain -->
+  <canvas id="grain" class="fixed inset-0 z-[15] pointer-events-none" style="opacity: 0.035; width: 100%; height: 100%;"></canvas>
+
+  <!-- Main Content -->
+  <div id="menu-content" class="relative z-20 flex flex-col items-center justify-center min-h-screen px-6">
+
+    <!-- Logo / Title -->
+    <div class="text-center mb-16 relative">
+      <h1 id="kronox-title" class="title-text text-6xl md:text-8xl lg:text-9xl font-bold tracking-tighter mb-2 relative">
+        KRONOX
+      </h1>
+      <div class="flex items-center justify-center gap-4 mb-4">
+        <div class="h-px w-12 bg-white opacity-40"></div>
+        <span class="subtitle-text text-xs md:text-sm tracking-[0.4em] uppercase opacity-60 font-light">Rhythm Interface</span>
+        <div class="h-px w-12 bg-white opacity-40"></div>
+      </div>
+      <p class="version-text text-xs tracking-[0.3em] uppercase opacity-30">Version 2.0.1</p>
+    </div>
+
+    <!-- Menu Buttons -->
+    <nav class="flex flex-col items-center gap-5 w-full max-w-sm">
+      
+      <button id="btn-start" class="menu-btn group w-full relative" style="pointer-events:auto;z-index:30">
+        <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+        <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+        <div class="relative flex items-center justify-center gap-4 py-5 px-8">
+          <svg class="w-6 h-6 opacity-60 group-hover:opacity-100 group-hover:invert transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <polygon points="5,3 19,12 5,21" fill="currentColor" stroke="none"/>
+          </svg>
+          <span class="text-lg tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Start</span>
+        </div>
+      </button>
+
+      <button id="btn-settings" class="menu-btn group w-full relative" style="pointer-events:auto;z-index:30">
+        <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+        <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+        <div class="relative flex items-center justify-center gap-4 py-5 px-8">
+          <svg class="w-6 h-6 opacity-60 group-hover:opacity-100 group-hover:invert transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <circle cx="12" cy="12" r="3"/>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          </svg>
+          <span class="text-lg tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Options</span>
+        </div>
+      </button>
+
+      <button id="btn-credits" class="menu-btn group w-full relative" style="pointer-events:auto;z-index:30">
+        <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+        <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+        <div class="relative flex items-center justify-center gap-4 py-5 px-8">
+          <svg class="w-6 h-6 opacity-60 group-hover:opacity-100 group-hover:invert transition-all duration-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+            <circle cx="9" cy="7" r="4"/>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+          </svg>
+          <span class="text-lg tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Credits</span>
+        </div>
+      </button>
+
+    </nav>
+
+    <!-- Player Stats (Bottom Left) -->
+    <div class="fixed bottom-8 left-8 md:left-16 z-30">
+      <div class="opacity-40 hover:opacity-80 transition-opacity duration-300 cursor-pointer" id="player-stats-card">
+        <p class="text-[10px] tracking-[0.3em] uppercase opacity-50 mb-2">Player Stats</p>
+        <div class="flex items-end gap-4">
+          <div>
+            <p class="text-lg tracking-wider font-medium leading-none" id="stat-total-plays">0</p>
+            <p class="text-[9px] tracking-[0.15em] uppercase opacity-40 mt-1">Plays</p>
+          </div>
+          <div>
+            <p class="text-lg tracking-wider font-medium leading-none" id="stat-best-acc">0%</p>
+            <p class="text-[9px] tracking-[0.15em] uppercase opacity-40 mt-1">Best Acc</p>
+          </div>
+          <div>
+            <p class="text-lg tracking-wider font-medium leading-none" id="stat-total-score">0</p>
+            <p class="text-[9px] tracking-[0.15em] uppercase opacity-40 mt-1">Score</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Recent Plays (Bottom Right) -->
+    <div class="fixed bottom-8 right-8 md:right-16 z-30 text-right">
+      <p class="text-[10px] tracking-[0.3em] uppercase opacity-30 mb-2">Recent</p>
+      <div id="recent-plays" class="space-y-1">
+        <p class="text-[10px] tracking-[0.1em] opacity-20">No plays yet</p>
+      </div>
+    </div>
+
+    <!-- Top Bar -->
+    <div class="fixed top-8 left-0 right-0 flex items-center justify-between px-8 md:px-16 z-30">
+      <div class="flex items-center gap-6">
+        <button id="btn-music" class="flex items-center gap-3 opacity-40 hover:opacity-100 transition-opacity duration-300">
+          <svg id="icon-music-on" class="w-5 h-5 hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+          </svg>
+          <svg id="icon-music-off" class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M9 18V5l12-2v13"/>
+            <circle cx="6" cy="18" r="3"/>
+            <circle cx="18" cy="16" r="3"/>
+            <line x1="1" y1="1" x2="23" y2="23"/>
+          </svg>
+          <span class="text-xs tracking-[0.2em] uppercase">Audio</span>
+        </button>
+        <span id="track-name" class="text-[10px] tracking-[0.15em] uppercase opacity-0 transition-opacity duration-500 max-w-[200px] truncate"></span>
+      </div>
+      <div class="flex items-center gap-4">
+        <button id="btn-leaderboard-menu" class="text-[10px] tracking-[0.2em] uppercase opacity-30 hover:opacity-100 transition-opacity px-3 py-1 border border-white/15 hover:border-white/50">
+          Leaderboard
+        </button>
+        <div class="flex items-center gap-2 opacity-20">
+          <div class="w-1.5 h-1.5 bg-white rounded-full animate-pulse"></div>
+          <span class="text-xs tracking-[0.15em] uppercase">v2.0.1</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Options Modal -->
+  <div id="modal-settings" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black opacity-95 backdrop-blur-sm modal-backdrop"></div>
+    <div class="relative w-full max-w-md mx-6 bg-black modal-content modal-solid overflow-hidden">
+      
+      <!-- Modal Background -->
+      <div class="absolute inset-0 z-0">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div class="absolute inset-0 grid-lines"></div>
+      </div>
+      <!-- Header Row -->
+      <div class="relative z-20 flex items-center justify-between py-4 px-6 border-b border-white opacity-20">
+        <h2 class="text-lg tracking-[0.3em] uppercase font-medium">Options</h2>
+        <button id="btn-close-settings" class="opacity-60 hover:opacity-100 transition-opacity">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Settings Rows -->
+      <div class="relative z-20 py-1">
+        
+        <div class="setting-row group relative cursor-pointer">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Master Volume</span>
+            <input type="range" min="0" max="100" value="70" class="w-28 slider">
+          </div>
+        </div>
+        
+        <div class="setting-row group relative cursor-pointer">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Background Effects</span>
+            <button id="toggle-particles" class="toggle-switch toggle-active" aria-label="Toggle particles">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="setting-row group relative cursor-pointer">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Screen Shake</span>
+            <button id="toggle-shake" class="toggle-switch" aria-label="Toggle screen shake">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+        </div>
+
+        <div class="setting-row group relative cursor-pointer">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">3D Highway</span>
+            <button id="toggle-3d" class="toggle-switch" aria-label="Toggle 3D highway">
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+        </div>
+
+        <div id="row-3d-mode" class="setting-row group relative cursor-pointer" style="display:none;">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">3D Mode</span>
+            <div class="relative" id="dropdown-3d-mode">
+              <button id="btn-3d-mode" class="bg-black/40 border border-white/20 text-xs tracking-[0.15em] uppercase text-white/80 py-1.5 px-3 pr-8 rounded outline-none focus:border-white/40 cursor-pointer flex items-center gap-2 min-w-[140px] justify-between hover:border-white/40 transition-colors">
+                <span id="label-3d-mode">Cylinder</span>
+                <svg class="w-3 h-3 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+              </button>
+              <div id="menu-3d-mode" class="absolute right-0 top-full mt-1 bg-black/90 border border-white/20 rounded overflow-hidden hidden z-50 min-w-[140px]">
+                <div class="dropdown-item cursor-pointer py-2 px-3 text-xs tracking-[0.15em] uppercase text-white/80 hover:bg-white/10 transition-colors" data-value="cylinder">Cylinder</div>
+                <div class="dropdown-item cursor-pointer py-2 px-3 text-xs tracking-[0.15em] uppercase text-white/80 hover:bg-white/10 transition-colors" data-value="flat">Flat (RoBeats)</div>
+                <div class="dropdown-item cursor-pointer py-2 px-3 text-xs tracking-[0.15em] uppercase text-white/80 hover:bg-white/10 transition-colors" data-value="three">Three.js</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="setting-row group relative cursor-pointer">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Input Offset</span>
+            <div class="flex items-center gap-3">
+              <button id="offset-minus" class="step-btn" aria-label="Decrease offset">−</button>
+              <span id="offset-value" class="text-xs tracking-[0.15em] uppercase opacity-40 w-10 text-center tabular-nums">0ms</span>
+              <button id="offset-plus" class="step-btn" aria-label="Increase offset">+</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="setting-row group relative cursor-pointer">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Note Speed</span>
+            <div class="flex items-center gap-3">
+              <button id="speed-minus" class="step-btn" aria-label="Decrease speed">−</button>
+              <span id="speed-value" class="text-xs tracking-[0.15em] uppercase opacity-40 w-10 text-center tabular-nums">1.0x</span>
+              <button id="speed-plus" class="step-btn" aria-label="Increase speed">+</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="setting-row group relative cursor-pointer" id="keybindings-row">
+          <div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div>
+          <div class="relative flex items-center justify-between py-4 px-6">
+            <span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Key Bindings</span>
+            <span id="keybindings-value" class="text-[10px] tracking-[0.25em] uppercase opacity-40 border border-white px-3 py-1 cursor-pointer hover:opacity-80 hover:border-opacity-60 transition-all">DFJK</span>
+          </div>
+        </div>
+        
+      </div>
+      
+      <!-- Save Button -->
+      <div class="relative z-20 px-6 pb-5 pt-2">
+        <button id="btn-save-settings" class="group w-full relative">
+          <div class="absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+          <div class="absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+          <div class="relative flex items-center justify-center py-3">
+            <span class="text-sm tracking-[0.3em] uppercase font-medium group-hover:invert transition-all duration-500">Save Options</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Credits Modal -->
+  <div id="modal-credits" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black opacity-95 backdrop-blur-sm modal-backdrop"></div>
+    <div class="relative w-full max-w-md mx-6 bg-black modal-content modal-solid overflow-hidden">
+      
+      <!-- Modal Background -->
+      <div class="absolute inset-0 z-0">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div class="absolute inset-0 grid-lines"></div>
+      </div>
+      <!-- Header Row -->
+      <div class="relative z-20 flex items-center justify-center py-4 px-6 border-b border-white opacity-20">
+        <h2 class="text-lg tracking-[0.3em] uppercase font-medium">Credits</h2>
+        <button id="btn-close-credits" class="absolute right-6 opacity-60 hover:opacity-100 transition-opacity">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      
+      <!-- Tabs -->
+      <div class="relative z-20 flex border-b border-white opacity-20">
+        <button class="credit-tab flex-1 py-3 text-xs tracking-[0.2em] uppercase opacity-40 hover:opacity-80 transition-opacity duration-300 tab-active" data-tab="team">Team</button>
+        <button class="credit-tab flex-1 py-3 text-xs tracking-[0.2em] uppercase opacity-40 hover:opacity-80 transition-opacity duration-300" data-tab="audio">Audio</button>
+        <button class="credit-tab flex-1 py-3 text-xs tracking-[0.2em] uppercase opacity-40 hover:opacity-80 transition-opacity duration-300" data-tab="visuals">Visuals</button>
+        <button class="credit-tab flex-1 py-3 text-xs tracking-[0.2em] uppercase opacity-40 hover:opacity-80 transition-opacity duration-300" data-tab="systems">Systems</button>
+        <button class="credit-tab flex-1 py-3 text-xs tracking-[0.2em] uppercase opacity-40 hover:opacity-80 transition-opacity duration-300" data-tab="thanks">Thanks</button>
+      </div>
+      
+      <!-- Tab Content Container -->
+      <div class="relative z-20 tab-content-wrapper">
+        
+        <!-- Team Tab -->
+        <div id="tab-team" class="tab-panel active">
+          <div class="py-1">
+            <div class="px-6 py-2 border-b border-white/10"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">KRONOX</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Rai</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Creative Director</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Kimi</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Systems Architect</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Claude</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">UI Engineer</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Frontend</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Canvas & Web Audio</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">QA</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Performance & Testing</span></div></div>
+
+            <div class="px-6 py-2 border-b border-white/10 mt-2"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">StepMania Team</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Chris Danford, Glenn Maynard, Steve Checkoway</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">StepMania Founders</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">AJ Kelly (freem)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Project Coordinator / Leader</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Midiman</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Themes & Programming</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">shakesoda</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Programming / Mac OS X</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Aldo_MX</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Code & Support</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Daisuke Master</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Programming & Noteskins</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">FSX</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Various Fixes</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Jason Felds (Wolfman2000)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Mac OS X Maintainer</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Devin J. Pohly (djpohly)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Patches & Fixes</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">David Santamaría Rogado (howl)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Patches</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">A.C (@waiei)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Scoring & Patches</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Alfred Sorenson</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Various Additions</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">cvpcs</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">ffmpeg Support</span></div></div>
+          </div>
+        </div>
+
+        <!-- Audio Tab -->
+        <div id="tab-audio" class="tab-panel">
+          <div class="px-6 py-4 border-b border-white/10"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">All tracks are property of their respective artists. Used with gratitude.</p></div>
+          <div class="py-1">
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative py-4 px-6"><div class="flex flex-col"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Call It What You Like</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-30 mt-0.5">Robbie Doherty</span></div></div></div>
+
+            <div class="px-6 py-2 border-b border-white/10 mt-2"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">StepMania</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative py-4 px-6"><div class="flex flex-col"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Kita K. / D. Trucks</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-30 mt-0.5">Default Theme Music</span></div></div></div>
+          </div>
+        </div>
+
+        <!-- Visuals Tab -->
+        <div id="tab-visuals" class="tab-panel">
+          <div class="py-1">
+            <div class="px-6 py-2 border-b border-white/10"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">KRONOX</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Motion Graphics</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Grid & Particle Systems</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Typography</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Syncopate & Space Grotesk</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Interface Design</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Modal & Menu Systems</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Animation</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">CSS & Canvas Transitions</span></div></div>
+
+            <div class="px-6 py-2 border-b border-white/10 mt-2"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">StepMania Noteskins</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Midiman</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">midi-* Noteskins</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">shakesoda</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">delta, gamma, orbital</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Daisuke Master</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Pump/simple, Pump/complex</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Kaox</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Pump/default Noteskin</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">cesarmades</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Pump/cmd-* Noteskins</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Macgravel</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Orbular Noteskin</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">NitroX72</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Pump/frame Noteskin</span></div></div>
+          </div>
+        </div>
+
+        <!-- Systems Tab -->
+        <div id="tab-systems" class="tab-panel">
+          <div class="py-1">
+            <div class="px-6 py-2 border-b border-white/10"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">KRONOX</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Scoring Engine</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Accuracy & Combo Logic</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Input Handler</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Latency & Offset Calibration</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Charting</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Difficulty Balancing</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">DevOps</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Build & Deploy Pipelines</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Accessibility</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Reduced Motion & Contrast</span></div></div>
+
+            <div class="px-6 py-2 border-b border-white/10 mt-2"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">StepMania Systems</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">cerbo</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Lua Bindings</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">1a2a3a2a1a</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Beat Mode Fixes</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">kurisu</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Dance-threepanel Gametype</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">v1toko</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">XMode Code (StepNXA)</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">galopin</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">USB Dance Mat Support</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Henke37</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">FFMpeg Stutter Fix</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">corec</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">FFMpeg & InputMapper</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">gholms</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Build System</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">juanelote</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">SongManager & MusicWheel</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Tatsh</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">System ffmpeg Patch</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Thai Pangsakulyanont (theDtTvB)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">BMS Loading & Playback</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">hanubeki (@803832)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Code Changes</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Nicole Reid (okeeblow)</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">FreeBSD Testing</span></div></div>
+          </div>
+        </div>
+
+        <!-- Thanks Tab -->
+        <div id="tab-thanks" class="tab-panel">
+          <div class="py-1">
+            <div class="px-6 py-4 border-b border-white/10"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">Special Thanks</p></div>
+            <div class="py-6 px-6 text-center">
+              <p class="text-xs tracking-wider opacity-50 leading-relaxed max-w-xs mx-auto">To everyone who believed in the vision. To the community for feedback, testing, and support. To the artists whose music brings this world to life.</p>
+            </div>
+
+            <div class="px-6 py-2 border-b border-white/10"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">Translations</p></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">John_Reactor</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Polish</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">DHalens</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Spanish</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Sakurana-Kobato</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Scoring Fixes</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">@Niler_jp</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Japanese</span></div></div>
+            <div class="credit-row group relative cursor-pointer"><div class="absolute inset-0 bg-white opacity-0 group-hover:opacity-[0.04] transition-opacity duration-300"></div><div class="relative flex items-center justify-between py-4 px-6"><span class="text-sm tracking-[0.2em] uppercase group-hover:opacity-100 opacity-80 transition-opacity duration-300">Deamon007</span><span class="text-[10px] tracking-[0.15em] uppercase opacity-40 group-hover:opacity-100 transition-opacity duration-300">Dutch</span></div></div>
+
+            <div class="px-6 py-2 border-b border-white/10 mt-2"><p class="text-[10px] tracking-[0.2em] uppercase opacity-50">Beta Testers</p></div>
+            <div class="py-4 px-6">
+              <p class="text-[10px] tracking-[0.15em] uppercase opacity-60 mb-2">SSC Beta Testing Team</p>
+              <p class="text-xs tracking-wider opacity-70 leading-relaxed">KeithD, tweak / tweak62</p>
+            </div>
+            <div class="py-4 px-6 border-t border-white/10">
+              <p class="text-[10px] tracking-[0.15em] uppercase opacity-60 mb-2">Friends of the Devs</p>
+              <p class="text-xs tracking-wider opacity-70 leading-relaxed">And4713, HankPeters, okeeblow, kdaymea, taiyal</p>
+            </div>
+            <div class="py-4 px-6 border-t border-white/10">
+              <p class="text-[10px] tracking-[0.15em] uppercase opacity-60 mb-2">Team Step Masters</p>
+              <p class="text-xs tracking-wider opacity-70 leading-relaxed">Nueel / emmanuel virus, Fye, Bijou, Nek0, Jib, Robe, Urqui, h4m573r, Torta</p>
+            </div>
+            <div class="py-4 px-6 border-t border-white/10">
+              <p class="text-[10px] tracking-[0.15em] uppercase opacity-60 mb-2">Private Beta Wave 1.x</p>
+              <p class="text-xs tracking-wider opacity-70 leading-relaxed">Sniper257, Wanny, Tio, Cerbo, Daisuke Master</p>
+            </div>
+
+            <div class="mt-4 flex items-center justify-center gap-3 opacity-20 py-6">
+              <div class="h-px w-8 bg-white"></div>
+              <span class="text-[10px] tracking-[0.3em] uppercase">KRONOX 2025</span>
+              <div class="h-px w-8 bg-white"></div>
+            </div>
+          </div>
+        </div>
+        
+      </div>
+      
+      <!-- Footer -->
+      <div class="relative z-20 py-4 px-6 border-t border-white/10 text-center">
+        <p class="text-[10px] tracking-[0.2em] uppercase opacity-40">KRONOX &copy; 2025</p>
+      </div>
+      
+    </div>
+  </div>
+
+  <!-- Keybind Capture Overlay -->
+  <div id="keybind-capture" class="fixed inset-0 z-[60] flex items-center justify-center">
+    <div class="absolute inset-0 bg-black opacity-95 backdrop-blur-sm"></div>
+    <div class="relative text-center px-6">
+      <p class="text-xs tracking-[0.3em] uppercase opacity-40 mb-2">Key Bindings</p>
+      <p class="text-lg tracking-[0.2em] uppercase font-medium mb-8">Press 4 keys to set your layout</p>
+      <div class="flex items-center justify-center gap-3 mb-8" id="keybind-slots">
+        <div class="keybind-slot" data-index="0"><span class="keybind-placeholder">—</span></div>
+        <div class="keybind-slot" data-index="1"><span class="keybind-placeholder">—</span></div>
+        <div class="keybind-slot" data-index="2"><span class="keybind-placeholder">—</span></div>
+        <div class="keybind-slot" data-index="3"><span class="keybind-placeholder">—</span></div>
+      </div>
+      <div class="flex items-center justify-center gap-4" id="keybind-actions">
+        <button id="keybind-cancel" class="text-xs tracking-[0.2em] uppercase opacity-40 hover:opacity-100 transition-opacity px-4 py-2">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Leaderboard Modal -->
+  <div id="modal-leaderboard" class="fixed inset-0 z-50 flex items-center justify-center">
+    <div class="absolute inset-0 bg-black opacity-95 backdrop-blur-sm modal-backdrop"></div>
+    <div class="relative w-full max-w-md mx-6 bg-black modal-content modal-solid overflow-hidden" style="max-height: 70vh;">
+      <div class="absolute inset-0 z-0">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div class="absolute inset-0 grid-lines"></div>
+      </div>
+      <div class="relative z-20 flex items-center justify-between py-4 px-6 border-b border-white opacity-20">
+        <h2 class="text-lg tracking-[0.3em] uppercase font-medium">Leaderboard</h2>
+        <button id="btn-close-leaderboard" class="opacity-60 hover:opacity-100 transition-opacity">
+          <svg class="w-6 h-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+      <div class="relative z-20 py-2 px-6">
+        <p class="text-[10px] tracking-[0.2em] uppercase opacity-30 mb-3">Top Scores — All Charts</p>
+        <div id="leaderboard-list" class="space-y-1 max-h-[45vh] overflow-y-auto">
+          <p class="text-xs tracking-wider opacity-30 py-4 text-center">No scores yet</p>
+        </div>
+      </div>
+      <div class="relative z-20 py-3 px-6 border-t border-white/10 text-center">
+        <p class="text-[9px] tracking-[0.2em] uppercase opacity-20">Local scores only</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Notification Toast -->
+  <div id="notification" class="fixed bottom-20 left-0 right-0 flex items-center justify-center z-[70] pointer-events-none opacity-0 transition-all duration-500 transform translate-y-4">
+    <div class="bg-black border border-white px-6 py-3 flex items-center gap-3">
+      <div class="w-1.5 h-1.5 bg-white rounded-full"></div>
+      <span id="notification-text" class="text-xs tracking-[0.2em] uppercase">Options Saved</span>
+    </div>
+  </div>
+
+  <!-- Start Transition Overlay -->
+  <div id="start-overlay" class="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center">
+    <!-- Scanlines -->
+    <div class="absolute inset-0 pointer-events-none scanlines"></div>
+
+    <div class="relative z-10 text-center max-w-md w-full px-8 start-content">
+      <!-- Top label -->
+      <p class="text-[10px] tracking-[0.5em] uppercase opacity-30 mb-16 font-light">System Boot Sequence</p>
+
+      <!-- Central spinner -->
+      <div class="relative w-28 h-28 mx-auto mb-12">
+        <!-- Outer dashed ring -->
+        <div class="absolute inset-0 rounded-full border border-dashed border-white opacity-15" style="border-width: 1px;"></div>
+        <!-- Spinning arc -->
+        <svg class="absolute inset-0 w-full h-full animate-spin" style="animation-duration: 2.5s;" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.4)" stroke-width="0.5" stroke-dasharray="60 188.5" stroke-linecap="round"/>
+        </svg>
+        <!-- Inner reverse arc -->
+        <svg class="absolute animate-spin" style="top:14%;left:14%;width:72%;height:72%;animation-duration:1.8s;animation-direction:reverse;" viewBox="0 0 100 100">
+          <circle cx="50" cy="50" r="48" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="0.5" stroke-dasharray="40 208.5" stroke-linecap="round"/>
+        </svg>
+
+        <!-- Percentage -->
+        <div class="absolute inset-0 flex items-center justify-center">
+          <span class="text-xl tracking-widest font-light opacity-90" id="loading-percent" style="font-family: 'Space Grotesk', monospace;">0%</span>
+        </div>
+      </div>
+
+      <!-- KRONOX title -->
+      <h2 class="text-3xl tracking-[0.4em] uppercase font-bold mb-3 opacity-90" style="font-family: 'Syncopate', sans-serif;">KRONOX</h2>
+
+      <!-- Status line with blinking cursor -->
+      <div class="flex items-center justify-center gap-2 mb-10">
+        <span class="text-xs tracking-[0.3em] uppercase opacity-50 font-light" id="loading-status">Loading assets</span>
+        <span class="w-1 h-3 bg-white opacity-60 animate-pulse"></span>
+      </div>
+
+      <!-- Progress bar with glow -->
+      <div class="relative w-full h-px bg-white opacity-10 mb-2 overflow-hidden">
+        <div id="loading-bar" class="absolute left-0 top-0 h-full bg-white transition-all duration-75" style="width: 0%; box-shadow: 0 0 8px rgba(255,255,255,0.4), 0 0 16px rgba(255,255,255,0.2);"></div>
+      </div>
+
+      <!-- Bottom metadata -->
+      <div class="flex items-center justify-between opacity-20 mt-8 px-1">
+        <span class="text-[9px] tracking-[0.15em] uppercase font-mono" id="loading-meta">MEM: 4096MB OK</span>
+        <span class="text-[9px] tracking-[0.15em] uppercase font-mono">BUILD 2.0.1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Screen -->
+  <div id="game-screen" class="fixed inset-0 z-40 bg-black">
+    <canvas id="game-canvas" class="absolute inset-0 w-full h-full"></canvas>
+
+    <!-- Receptors Overlay -->
+    <div id="game-receptors" class="absolute inset-0 pointer-events-none">
+      <div class="receptor" id="receptor-0" data-lane="0"><span class="receptor-key">D</span></div>
+      <div class="receptor" id="receptor-1" data-lane="1"><span class="receptor-key">F</span></div>
+      <div class="receptor" id="receptor-2" data-lane="2"><span class="receptor-key">J</span></div>
+      <div class="receptor" id="receptor-3" data-lane="3"><span class="receptor-key">K</span></div>
+    </div>
+
+    <!-- Per-lane Judgment Text (RoBeats style) -->
+    <div id="lane-judgments" class="absolute inset-0 pointer-events-none z-50">
+      <div id="lane-judgment-0" class="lane-judgment"></div>
+      <div id="lane-judgment-1" class="lane-judgment"></div>
+      <div id="lane-judgment-2" class="lane-judgment"></div>
+      <div id="lane-judgment-3" class="lane-judgment"></div>
+    </div>
+
+    <!-- HUD -->
+    <div id="game-hud" class="absolute inset-0 pointer-events-none">
+      <!-- Top Left: Accuracy + Mode -->
+      <div class="absolute top-8 left-8">
+        <p id="game-accuracy" class="text-[10px] tracking-[0.15em] uppercase opacity-40"></p>
+        <p id="game-mode" class="text-[10px] tracking-[0.2em] uppercase opacity-20 mt-1"></p>
+      </div>
+      <!-- Top Right: Score + Grade + Song -->
+      <div class="absolute top-8 right-8 text-right">
+        <p id="game-grade" class="text-2xl tracking-[0.2em] font-bold opacity-0 mb-1" style="font-family:'Syncopate',sans-serif;"></p>
+        <p id="game-score" class="score-text">0000000</p>
+        <p id="game-song" class="text-[10px] tracking-[0.15em] uppercase opacity-30 mt-1 max-w-[200px] truncate"></p>
+      </div>
+      <!-- Top Center: Pause + Judgment Counters -->
+      <div class="absolute top-8 left-1/2 transform -translate-x-1/2 flex flex-col items-center">
+        <button id="btn-pause" class="text-[10px] tracking-[0.2em] uppercase opacity-30 hover:opacity-80 transition-opacity px-3 py-1 border border-white/20 hover:border-white/60 pointer-events-auto">
+          PAUSE
+        </button>
+        <div class="flex items-center gap-3 mt-3 opacity-30" id="judgment-counter">
+          <span class="text-[9px] tracking-[0.1em]"><span id="cnt-perfect">0</span>P</span>
+          <span class="text-[9px] tracking-[0.1em]"><span id="cnt-good">0</span>G</span>
+          <span class="text-[9px] tracking-[0.1em]"><span id="cnt-bad">0</span>B</span>
+          <span class="text-[9px] tracking-[0.1em]"><span id="cnt-miss">0</span>M</span>
+        </div>
+      </div>
+      <!-- Center: Judgment Flash -->
+      <div class="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 text-center">
+        <p id="game-judgment" class="judgment-text"></p>
+        <p id="game-offset" class="offset-text"></p>
+      </div>
+
+      <!-- Right Center: Curved Rank Gauge -->
+      <div id="rank-gauge-wrap" class="absolute right-4 top-1/2 transform -translate-y-1/2" style="width: 120px; height: 340px;">
+        <svg id="rank-gauge" width="120" height="340" viewBox="0 0 120 340" class="rank-gauge-svg" style="position: absolute; left: 0; top: 0;">
+          <!-- Background curved track -->
+          <path id="rank-arc-bg" d="M 18 270 Q 85 160 18 50" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="10" stroke-linecap="round"/>
+          <!-- Fill arc -->
+          <path id="rank-arc-fill" d="M 18 270 Q 85 160 18 50" fill="none" stroke="rgba(255,255,255,0.65)" stroke-width="10" stroke-linecap="round" style="transition: stroke-dashoffset 0.4s ease; filter: drop-shadow(0 0 8px rgba(255,255,255,0.35));"/>
+          <!-- Glow highlight at current position -->
+          <circle id="rank-arc-glow" cx="18" cy="270" r="5" fill="white" opacity="0" style="transition: all 0.4s ease; filter: blur(3px);"/>
+          <!-- Grade labels positioned along the quadratic bezier -->
+          <g id="rank-labels" style="font-family:'Space Grotesk',sans-serif;font-size:9px;letter-spacing:0.08em;">
+            <text x="26" y="273" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="0">F</text>
+            <text x="36" y="254" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="60">F+</text>
+            <text x="44" y="236" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="65">D</text>
+            <text x="51" y="218" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="70">D+</text>
+            <text x="56" y="200" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="75">C</text>
+            <text x="59" y="182" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="80">C+</text>
+            <text x="60" y="164" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="85">B</text>
+            <text x="59" y="145" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="90">B+</text>
+            <text x="56" y="127" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="95">A</text>
+            <text x="51" y="108" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="97">A+</text>
+            <text x="44" y="90" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="98.5">S</text>
+            <text x="36" y="71" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="99.5">SS</text>
+            <text x="26" y="53" fill="rgba(255,255,255,0.35)" class="rank-label-text" data-threshold="100">SSS</text>
+          </g>
+        </svg>
+        <!-- Current rank label follows the glow dot -->
+        <p id="rank-label" class="absolute pointer-events-none" style="font-family:'Syncopate',sans-serif; font-size: 11px; letter-spacing: 0.15em; font-weight: 700; transform: translate(0, -50%); transition: all 0.4s ease; z-index: 10; text-shadow: 0 0 6px rgba(0,0,0,0.9), 0 0 12px rgba(0,0,0,0.7);">F</p>
+      </div>
+
+      <!-- Bottom Left: Tap Counters -->
+      <div class="absolute bottom-8 left-8 flex items-end gap-2" id="tap-counters">
+        <div class="tap-counter" id="tap-0"><span class="tap-key">D</span><span class="tap-count">0</span></div>
+        <div class="tap-counter" id="tap-1"><span class="tap-key">F</span><span class="tap-count">0</span></div>
+        <div class="tap-counter" id="tap-2"><span class="tap-key">J</span><span class="tap-count">0</span></div>
+        <div class="tap-counter" id="tap-3"><span class="tap-key">K</span><span class="tap-count">0</span></div>
+      </div>
+
+      <!-- Bottom Right: Combo + Time -->
+      <div class="absolute bottom-8 right-8 text-right">
+        <div id="game-combo" class="combo-badge"></div>
+        <p id="game-time" class="text-[10px] tracking-[0.15em] uppercase opacity-30 mt-2"></p>
+      </div>
+    </div>
+
+    <!-- Progress Bar -->
+    <div class="absolute bottom-0 left-0 right-0 h-1 bg-white opacity-10">
+      <div id="game-progress" class="h-full bg-white opacity-50" style="width: 0%; transition: none;"></div>
+    </div>
+
+    <!-- Pause Overlay -->
+    <div id="game-pause" class="absolute inset-0 z-[60] flex flex-col items-center justify-center bg-black/90">
+      <div class="text-center max-w-xs w-full px-8">
+        <p class="text-[10px] tracking-[0.5em] uppercase opacity-30 mb-12">Paused</p>
+        <div class="flex flex-col gap-4 mb-8">
+          <button id="btn-resume" class="menu-btn group w-full relative">
+            <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+            <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+            <div class="relative flex items-center justify-center py-3 px-8">
+              <span class="text-sm tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Resume</span>
+            </div>
+          </button>
+          <button id="btn-quit" class="menu-btn group w-full relative">
+            <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+            <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+            <div class="relative flex items-center justify-center py-3 px-8">
+              <span class="text-sm tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Quit</span>
+            </div>
+          </button>
+        </div>
+        <p class="text-[10px] tracking-[0.15em] uppercase opacity-20">SPACE to resume</p>
+      </div>
+    </div>
+
+    <!-- Countdown -->
+    <div id="game-countdown" class="absolute inset-0 flex items-center justify-center pointer-events-none">
+      <span class="countdown-text"></span>
+    </div>
+
+    <!-- Pregame Overlay -->
+    <div id="game-pregame" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black">
+      <div class="absolute inset-0 z-0">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div class="absolute inset-0 grid-lines"></div>
+      </div>
+      <div class="relative z-10 w-full max-w-4xl px-8 py-8">
+        <!-- Header -->
+        <div class="text-center mb-8">
+          <p class="text-[10px] tracking-[0.5em] uppercase opacity-30 mb-2">Select Mode</p>
+          <h2 class="text-2xl tracking-[0.3em] uppercase font-bold opacity-80" style="font-family:'Syncopate',sans-serif;">Song Select</h2>
+        </div>
+
+        <!-- Top Row: Info + Settings + Upload -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <!-- Now Playing Card -->
+          <div class="border border-white/10 bg-white/[0.02] p-5 flex flex-col justify-between">
+            <div>
+              <p class="text-[9px] tracking-[0.3em] uppercase opacity-30 mb-3">Now Playing</p>
+              <p id="pregame-song-name" class="text-sm tracking-[0.1em] uppercase font-medium opacity-80 truncate">Call It What You Like</p>
+              <p id="pregame-song-artist" class="text-[10px] tracking-[0.15em] uppercase opacity-30 mt-1">Robbie Doherty</p>
+            </div>
+            <div class="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+              <span class="text-[9px] tracking-[0.2em] uppercase opacity-25">Duration</span>
+              <span id="pregame-song-duration" class="text-[10px] tracking-wider opacity-50 font-mono">--:--</span>
+            </div>
+          </div>
+
+          <!-- Quick Settings Card -->
+          <div class="border border-white/10 bg-white/[0.02] p-5">
+            <p class="text-[9px] tracking-[0.3em] uppercase opacity-30 mb-3">Current Settings</p>
+            <div class="space-y-2.5">
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] tracking-[0.15em] uppercase opacity-40">Note Speed</span>
+                <span id="pregame-setting-speed" class="text-[10px] tracking-wider opacity-70 font-mono">1.0x</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] tracking-[0.15em] uppercase opacity-40">Input Offset</span>
+                <span id="pregame-setting-offset" class="text-[10px] tracking-wider opacity-70 font-mono">0ms</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] tracking-[0.15em] uppercase opacity-40">Key Layout</span>
+                <span id="pregame-setting-keys" class="text-[10px] tracking-wider opacity-70 font-mono">DFJK</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] tracking-[0.15em] uppercase opacity-40">Screen Shake</span>
+                <span id="pregame-setting-shake" class="text-[10px] tracking-wider opacity-70 font-mono">OFF</span>
+              </div>
+              <div class="flex items-center justify-between">
+                <span class="text-[10px] tracking-[0.15em] uppercase opacity-40">Highway</span>
+                <span id="pregame-setting-3d" class="text-[10px] tracking-wider opacity-70 font-mono">2D</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Upload + Actions Card -->
+          <div class="border border-white/10 bg-white/[0.02] p-5 flex flex-col justify-between">
+            <div>
+              <p class="text-[9px] tracking-[0.3em] uppercase opacity-30 mb-3">Custom Audio</p>
+              <p class="text-[10px] tracking-wider opacity-30 leading-relaxed mb-4">Upload your own track to play or record a chart for it.</p>
+            </div>
+            <div class="flex flex-col gap-3">
+              <input type="file" id="audio-upload" accept="audio/*" class="hidden">
+              <button id="btn-upload" class="menu-btn group w-full relative">
+                <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+                <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+                <div class="relative flex items-center justify-center py-3 px-4">
+                  <span class="text-xs tracking-[0.2em] uppercase font-medium group-hover:invert transition-all duration-500">Upload Audio</span>
+                </div>
+              </button>
+              <p id="upload-filename" class="text-[9px] tracking-[0.1em] uppercase opacity-30 text-center truncate"></p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart List Section -->
+        <div class="border border-white/10 bg-white/[0.02] p-5 mb-8">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-[9px] tracking-[0.3em] uppercase opacity-30">Available Charts</p>
+            <span id="chart-count" class="text-[9px] tracking-wider opacity-20 font-mono">0 charts</span>
+          </div>
+          <div id="chart-list" class="max-h-[160px] overflow-y-auto pr-1"></div>
+        </div>
+
+        <!-- Bottom Actions -->
+        <div class="flex flex-col md:flex-row items-center justify-center gap-4 mb-6">
+          <button id="btn-mode-play" class="menu-btn group w-full md:w-56 relative">
+            <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+            <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+            <div class="relative flex items-center justify-center py-4 px-8">
+              <span class="text-sm tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Play Demo</span>
+            </div>
+          </button>
+          <button id="btn-mode-record" class="menu-btn group w-full md:w-56 relative">
+            <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+            <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+            <div class="relative flex items-center justify-center py-4 px-8">
+              <span class="text-sm tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Record</span>
+            </div>
+          </button>
+        </div>
+
+        <div class="text-center">
+          <button id="btn-game-back" class="text-xs tracking-[0.2em] uppercase opacity-30 hover:opacity-100 transition-opacity">Back to Menu</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Results Overlay -->
+    <div id="game-results" class="absolute inset-0 z-50 flex flex-col items-center justify-center bg-black">
+      <div class="absolute inset-0 z-0">
+        <div class="absolute inset-0 grid-bg"></div>
+        <div class="absolute inset-0 grid-lines"></div>
+      </div>
+      <div class="relative z-10 text-center max-w-md w-full px-8">
+        <!-- Grade -->
+        <div class="mb-6">
+          <p class="text-[10px] tracking-[0.5em] uppercase opacity-30 mb-4">Results</p>
+          <p id="result-grade" class="text-6xl md:text-7xl tracking-[0.2em] font-bold opacity-0" style="font-family:'Syncopate',sans-serif;">F</p>
+          <p id="result-grade-label" class="text-xs tracking-[0.3em] uppercase opacity-40 mt-2"></p>
+        </div>
+
+        <!-- Score + Comparison -->
+        <div class="mb-6">
+          <p class="text-3xl tracking-[0.3em] uppercase font-bold mb-1" id="result-score">0000000</p>
+          <p id="result-best-comparison" class="text-[10px] tracking-[0.15em] uppercase opacity-30"></p>
+        </div>
+
+        <!-- Main Stats -->
+        <div class="grid grid-cols-4 gap-3 mb-6">
+          <div>
+            <p class="text-lg tracking-wider font-medium" id="result-accuracy">0.0%</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-1">Accuracy</p>
+          </div>
+          <div>
+            <p class="text-lg tracking-wider font-medium" id="result-maxcombo">0</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-1">Max Combo</p>
+          </div>
+          <div>
+            <p class="text-lg tracking-wider font-medium" id="result-perfect">0</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-1">Perfect</p>
+          </div>
+          <div>
+            <p class="text-lg tracking-wider font-medium" id="result-earlylate">0</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-1">Avg Offset</p>
+          </div>
+        </div>
+
+        <!-- Judgment Breakdown -->
+        <div class="flex items-center justify-center gap-6 mb-8 opacity-50">
+          <div class="text-center">
+            <p class="text-sm tracking-wider" id="result-good">0</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-0.5">Good</p>
+          </div>
+          <div class="text-center">
+            <p class="text-sm tracking-wider" id="result-bad">0</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-0.5">Bad</p>
+          </div>
+          <div class="text-center">
+            <p class="text-sm tracking-wider" id="result-miss">0</p>
+            <p class="text-[9px] tracking-[0.1em] uppercase opacity-40 mt-0.5">Miss</p>
+          </div>
+        </div>
+
+        <button id="btn-result-back" class="menu-btn group w-full relative">
+          <div class="btn-bg absolute inset-0 border border-white opacity-20 group-hover:opacity-60 transition-opacity duration-500"></div>
+          <div class="btn-fill absolute inset-0 bg-white origin-left scale-x-0 group-hover:scale-x-100 transition-transform duration-500 ease-out"></div>
+          <div class="relative flex items-center justify-center py-3 px-8">
+            <span class="text-sm tracking-[0.25em] uppercase font-medium group-hover:invert transition-all duration-500">Continue</span>
+          </div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="/js/main.js"></script>
+  <script src="/js/game.js"></script>
+</body>
+</html>

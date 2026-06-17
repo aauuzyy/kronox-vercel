@@ -1,0 +1,741 @@
+/* ===== Base ===== */
+.visibility-hidden {
+  visibility: hidden;
+}
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: 'Space Grotesk', sans-serif;
+  background-color: #000000;
+  color: #ffffff;
+}
+
+.title-text {
+  font-family: 'Syncopate', sans-serif;
+  transition: text-shadow 0.08s ease-out;
+}
+
+/* ===== Grid Background ===== */
+.grid-bg {
+  background-image: 
+    linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px);
+  background-size: 60px 60px;
+  animation: gridMove 20s linear infinite;
+}
+
+.grid-lines {
+  background-image: 
+    linear-gradient(rgba(255,255,255,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.06) 1px, transparent 1px);
+  background-size: 240px 240px;
+  animation: gridMove 40s linear infinite reverse;
+}
+
+@keyframes gridMove {
+  0% { transform: translate(0, 0); }
+  100% { transform: translate(60px, 60px); }
+}
+
+/* ===== Scanlines ===== */
+.scanlines {
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.03) 0%,
+    rgba(255,255,255,0.03) 50%,
+    transparent 50%,
+    transparent 100%
+  );
+  background-size: 100% 4px;
+  opacity: 0.15;
+}
+
+/* ===== Film Grain Canvas ===== */
+#grain {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ===== Vignette ===== */
+.vignette {
+  background: radial-gradient(ellipse at center, transparent 0%, transparent 40%, rgba(0,0,0,0.8) 100%);
+}
+
+/* ===== Title Bass Reactivity ===== */
+#kronox-title {
+  text-shadow: 0 0 40px rgba(255,255,255,0.1);
+}
+
+.subtitle-text {
+  animation: fadeInUp 1s ease-out 0.5s both;
+}
+
+.version-text {
+  animation: fadeInUp 1s ease-out 0.8s both;
+}
+
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 0.3; transform: translateY(0); }
+}
+
+/* ===== Menu Buttons ===== */
+.menu-btn {
+  animation: fadeInUp 0.8s ease-out both;
+}
+
+.menu-btn:nth-child(1) { animation-delay: 0.3s; }
+.menu-btn:nth-child(2) { animation-delay: 0.5s; }
+.menu-btn:nth-child(3) { animation-delay: 0.7s; }
+
+.menu-btn .btn-bg::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border: 1px solid rgba(255,255,255,0.1);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.menu-btn:hover .btn-bg::before {
+  opacity: 1;
+}
+
+.menu-btn .btn-bg { z-index: 0; }
+.menu-btn .btn-fill {
+  z-index: 1;
+  background-color: #ffffff !important;
+  opacity: 1 !important;
+}
+.menu-btn > .relative { z-index: 2; position: relative; }
+
+/* ===== Modal States ===== */
+#modal-settings,
+#modal-credits,
+#modal-leaderboard {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0s linear 0.5s;
+}
+
+#modal-settings.modal-open,
+#modal-credits.modal-open,
+#modal-leaderboard.modal-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.5s ease, visibility 0s linear 0s;
+}
+
+#modal-settings .modal-content,
+#modal-credits .modal-content,
+#modal-leaderboard .modal-content {
+  transform: scale(0.95);
+  transition: transform 0.5s ease;
+}
+
+#modal-settings.modal-open .modal-content,
+#modal-credits.modal-open .modal-content,
+#modal-leaderboard.modal-open .modal-content {
+  transform: scale(1);
+}
+
+.modal-solid {
+  background-color: #000000 !important;
+  opacity: 1 !important;
+}
+
+/* ===== Toggle Switch ===== */
+.toggle-switch {
+  width: 36px;
+  height: 20px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 10px;
+  background: transparent;
+  position: relative;
+  cursor: pointer;
+  padding: 0;
+  transition: border-color 0.3s, background 0.3s;
+}
+
+.toggle-switch:hover { border-color: rgba(255,255,255,0.5); }
+
+.toggle-switch .toggle-knob {
+  display: block;
+  width: 14px;
+  height: 14px;
+  background: rgba(255,255,255,0.5);
+  border-radius: 50%;
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1), background 0.3s;
+}
+
+.toggle-switch.toggle-active {
+  border-color: rgba(255,255,255,0.8);
+  background: rgba(255,255,255,0.08);
+}
+
+.toggle-switch.toggle-active .toggle-knob {
+  transform: translateX(16px);
+  background: white;
+  box-shadow: 0 0 8px rgba(255,255,255,0.3);
+}
+
+/* ===== Step Buttons ===== */
+.step-btn {
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+  color: rgba(255,255,255,0.25);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s, transform 0.15s;
+  padding: 0;
+}
+
+.step-btn:hover { color: rgba(255,255,255,0.9); transform: scale(1.2); }
+.step-btn:active { transform: scale(0.95); }
+
+/* ===== Custom Slider ===== */
+.slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 2px;
+  background: rgba(255,255,255,0.15);
+  outline: none;
+  cursor: pointer;
+  transition: background 0.3s;
+}
+
+.slider:hover { background: rgba(255,255,255,0.35); }
+
+.slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  background: white;
+  cursor: pointer;
+  border-radius: 0;
+  box-shadow: 0 0 8px rgba(255,255,255,0.3);
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.slider::-webkit-slider-thumb:hover {
+  transform: scale(1.3);
+  box-shadow: 0 0 14px rgba(255,255,255,0.5);
+}
+
+.slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  background: white;
+  cursor: pointer;
+  border-radius: 0;
+  border: none;
+  box-shadow: 0 0 8px rgba(255,255,255,0.3);
+}
+
+.slider::-moz-range-track {
+  height: 2px;
+  background: rgba(255,255,255,0.15);
+}
+
+/* ===== Credit Tabs ===== */
+.credit-tab { position: relative; }
+.credit-tab.tab-active { opacity: 1 !important; }
+.credit-tab.tab-active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 20%;
+  right: 20%;
+  height: 1px;
+  background: white;
+}
+
+/* ===== Tab Panels ===== */
+.tab-content-wrapper {
+  position: relative;
+  min-height: 200px;
+  max-height: 55vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.tab-panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  opacity: 0;
+  transform: translateX(12px);
+  pointer-events: none;
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+.tab-panel.active {
+  opacity: 1;
+  transform: translateX(0);
+  pointer-events: auto;
+  position: relative;
+}
+
+/* ===== Keybind Capture ===== */
+#keybind-capture {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+#keybind-capture.capture-open {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.3s ease, visibility 0s linear 0s;
+}
+
+.keybind-slot {
+  width: 48px;
+  height: 48px;
+  border: 1px dashed rgba(255,255,255,0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+.keybind-slot.filled {
+  border-style: solid;
+  border-color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.05);
+}
+.keybind-slot.pulse { animation: slotPulse 0.4s ease; }
+
+@keyframes slotPulse {
+  0% { transform: scale(1); border-color: rgba(255,255,255,0.2); }
+  50% { transform: scale(1.1); border-color: rgba(255,255,255,0.9); background: rgba(255,255,255,0.1); }
+  100% { transform: scale(1); border-color: rgba(255,255,255,0.6); }
+}
+
+.keybind-placeholder { font-size: 12px; letter-spacing: 0.1em; opacity: 0.2; }
+.keybind-slot span:not(.keybind-placeholder) { font-size: 14px; font-weight: 500; letter-spacing: 0.05em; }
+
+/* ===== Notification ===== */
+#notification {
+  pointer-events: none;
+  visibility: hidden;
+}
+#notification.show {
+  opacity: 1;
+  transform: translateY(0);
+  visibility: visible;
+}
+
+/* ===== Start Overlay ===== */
+#start-overlay {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.7s ease, visibility 0s linear 0.7s;
+}
+#start-overlay.start-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.7s ease, visibility 0s linear 0s;
+}
+#start-overlay .start-content {
+  transform: scale(0.95);
+  transition: transform 0.7s ease;
+}
+#start-overlay.start-active .start-content {
+  transform: scale(1);
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: #000; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); }
+
+/* ===== Selection ===== */
+::selection {
+  background: rgba(255,255,255,0.2);
+  color: #fff;
+}
+
+/* ===== Game Screen ===== */
+#game-screen {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0s linear 0.5s;
+}
+#game-screen.game-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.5s ease, visibility 0s linear 0s;
+}
+
+/* ===== Receptors ===== */
+.receptor {
+  position: absolute;
+  border: 1.5px solid rgba(255,255,255,0.18);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.04s ease, border-color 0.04s ease;
+}
+.receptor-pressed {
+  transform: scale(0.9);
+  border-color: rgba(255,255,255,0.7);
+}
+.receptor-key {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 9px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.25;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ===== Per-lane RoBeats Judgments ===== */
+.lane-judgment {
+  position: absolute;
+  font-family: 'Sedgwick Ave Display', cursive;
+  font-size: 3rem;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  text-align: center;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.6);
+  transition: opacity 0.08s ease;
+  pointer-events: none;
+  user-select: none;
+  -webkit-text-stroke: 2.5px rgba(0,0,0,0.85);
+}
+.lane-judgment-active {
+  animation: laneJudgePop 0.38s ease-out forwards;
+}
+.lane-judgment.judge-perfect { color: #00f0ff; }
+.lane-judgment.judge-good    { color: #00ff44; }
+.lane-judgment.judge-okay    { color: #ffea00; }
+.lane-judgment.judge-miss    { color: #ff0033; }
+
+@keyframes laneJudgePop {
+  0%   { opacity: 0; transform: translate(-50%, -40%) scale(0.4) rotate(-6deg); }
+  25%  { opacity: 1; transform: translate(-50%, -55%) scale(1.15) rotate(2deg); }
+  55%  { opacity: 1; transform: translate(-50%, -50%) scale(1.0) rotate(0deg); }
+  100% { opacity: 0; transform: translate(-50%, -35%) scale(0.95); }
+}
+
+/* ===== HUD ===== */
+.combo-text {
+  font-family: 'Syncopate', sans-serif;
+  font-size: 1.1rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+.score-text {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 1rem;
+  letter-spacing: 0.18em;
+  opacity: 0.5;
+}
+
+/* ===== Grade ===== */
+.grade-text {
+  font-family: 'Syncopate', sans-serif;
+  transition: opacity 0.3s ease;
+}
+.grade-sss { color: #ffffff; text-shadow: 0 0 30px rgba(255,255,255,0.6); }
+.grade-ss  { color: #ffffff; text-shadow: 0 0 20px rgba(255,255,255,0.4); }
+.grade-s   { color: rgba(255,255,255,0.9); text-shadow: 0 0 12px rgba(255,255,255,0.2); }
+.grade-a   { color: rgba(255,255,255,0.7); }
+.grade-b   { color: rgba(255,255,255,0.5); }
+.grade-c   { color: rgba(255,255,255,0.35); }
+.grade-d   { color: rgba(255,255,255,0.25); }
+.grade-f   { color: rgba(255,255,255,0.15); }
+
+/* ===== Judgment Text ===== */
+.judgment-text {
+  font-family: 'Syncopate', sans-serif;
+  font-size: 1.6rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  opacity: 0;
+  transform: scale(0.85);
+}
+.judgment-active {
+  animation: judgmentFlash 0.4s ease-out forwards;
+}
+@keyframes judgmentFlash {
+  0% { opacity: 1; transform: scale(1.1); }
+  30% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0; transform: scale(0.95); }
+}
+.judgment-perfect { color: #ffffff; text-shadow: 0 0 16px rgba(255,255,255,0.4); }
+.judgment-good { color: rgba(255,255,255,0.8); }
+.judgment-bad { color: rgba(255,255,255,0.5); }
+.judgment-miss { color: rgba(255,255,255,0.25); }
+
+/* ===== Offset Text ===== */
+.offset-text {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  opacity: 0;
+  margin-top: 0.25rem;
+}
+.offset-active {
+  animation: offsetFade 0.5s ease-out forwards;
+}
+@keyframes offsetFade {
+  0% { opacity: 0.4; }
+  100% { opacity: 0; }
+}
+
+/* ===== Countdown ===== */
+.countdown-text {
+  font-family: 'Syncopate', sans-serif;
+  font-size: 4rem;
+  letter-spacing: 0.25em;
+  font-weight: 700;
+  opacity: 0;
+}
+.countdown-active {
+  animation: countdownPop 0.45s ease-out forwards;
+}
+@keyframes countdownPop {
+  0% { opacity: 1; transform: scale(1.3); }
+  40% { opacity: 1; transform: scale(0.92); }
+  100% { opacity: 0; transform: scale(1); }
+}
+
+/* ===== Pregame Overlay ===== */
+#game-pregame {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.4s ease, visibility 0s linear 0.4s;
+}
+#game-pregame.pregame-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.4s ease, visibility 0s linear 0s;
+}
+
+/* ===== Results Overlay ===== */
+#game-results {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.5s ease, visibility 0s linear 0.5s;
+}
+#game-results.results-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.5s ease, visibility 0s linear 0s;
+}
+
+/* ===== Pause Overlay ===== */
+#game-pause {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0s linear 0.3s;
+}
+#game-pause.pause-active {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity 0.3s ease, visibility 0s linear 0s;
+}
+
+/* ===== Screen Shake ===== */
+/* Directional shake is now handled via inline transforms in JS */
+
+/* ===== Leaderboard Row ===== */
+.leaderboard-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.6rem 0;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.leaderboard-row:last-child {
+  border-bottom: none;
+}
+.leaderboard-rank {
+  font-family: 'Syncopate', sans-serif;
+  font-size: 0.7rem;
+  width: 24px;
+  opacity: 0.5;
+}
+.leaderboard-name {
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  flex: 1;
+  padding: 0 0.75rem;
+  opacity: 0.75;
+}
+.leaderboard-score {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  opacity: 0.6;
+}
+.leaderboard-acc {
+  font-size: 0.65rem;
+  letter-spacing: 0.05em;
+  opacity: 0.35;
+  margin-left: 0.5rem;
+  width: 40px;
+  text-align: right;
+}
+
+/* ===== Result Grade Animation ===== */
+.grade-reveal {
+  animation: gradeReveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+@keyframes gradeReveal {
+  0% { opacity: 0; transform: scale(2.5); }
+  60% { opacity: 1; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+/* ===== Reduced Motion ===== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .grid-bg, .grid-lines { animation: none; }
+  #grain { display: none; }
+}
+/* ===== Combo Badge ===== */
+.combo-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 80px;
+  min-height: 80px;
+  border: 2px solid rgba(255,255,255,0.25);
+  border-radius: 50%;
+  background: rgba(255,255,255,0.03);
+  font-family: 'Syncopate', sans-serif;
+  color: #ffffff;
+}
+
+.combo-badge .combo-label {
+  font-size: 8px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 2px;
+}
+
+.combo-badge .combo-number {
+  font-size: 1.4rem;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.combo-badge.active {
+  border-color: rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.06);
+  box-shadow: 0 0 20px rgba(255,255,255,0.08);
+}
+
+/* ===== Rank Gauge ===== */
+.rank-gauge-svg {
+  overflow: visible;
+}
+
+.rank-label-text {
+  transition: fill 0.3s ease, opacity 0.3s ease;
+}
+
+.rank-label-text.active {
+  fill: rgba(255,255,255,0.95) !important;
+  opacity: 1 !important;
+  filter: drop-shadow(0 0 5px rgba(255,255,255,0.5));
+}
+
+/* ===== Pregame Screen ===== */
+#game-pregame .grid-bg,
+#game-pregame .grid-lines {
+  opacity: 0.5;
+}
+
+.chart-item:last-child {
+  margin-bottom: 0 !important;
+}
+
+.chart-delete {
+  cursor: pointer;
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 2px;
+}
+
+.chart-delete:hover {
+  color: #ff6b6b;
+}
+
+/* ===== Tap Counters ===== */
+#tap-counters {
+  opacity: 0.35;
+}
+
+.tap-counter {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 44px;
+  border: 1px solid rgba(255,255,255,0.15);
+  background: rgba(255,255,255,0.02);
+}
+
+.tap-key {
+  font-size: 9px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  opacity: 0.5;
+  margin-bottom: 2px;
+}
+
+.tap-count {
+  font-family: 'Space Grotesk', monospace;
+  font-size: 13px;
+  letter-spacing: 0.05em;
+  font-weight: 500;
+}

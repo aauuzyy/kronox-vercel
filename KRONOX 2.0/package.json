@@ -1,0 +1,13 @@
+{
+  "name": "rhythm-game-ui",
+  "version": "1.0.0",
+  "description": "Rhythm game start screen UI",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

@@ -1,0 +1,28 @@
+.control {
+  display: inline-flex;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 3px;
+  gap: 3px;
+}
+
+.option {
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: all var(--transition-base);
+}
+
+.option:hover {
+  color: var(--text);
+}
+
+.active {
+  background: var(--accent);
+  color: var(--bg) !important;
+  font-weight: 600;
+}
