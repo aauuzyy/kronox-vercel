@@ -152,21 +152,6 @@ export default function App() {
     setScreen('game')
   }
 
-  const handleEditFromCatalog = (song) => {
-    const sub = Number(song.subdivision) || 1
-    const beats = Math.round(song.chart.length / sub)
-    update({
-      songTitle: song.title,
-      bpm: song.bpm,
-      subdivision: sub,
-      beats,
-      chart: song.chart,
-      audioUrl: song.audioUrl,
-      audioFileName: song.audioFileName,
-    })
-    setScreen('setup')
-  }
-
   return (
     <div className="app-root">
       {screen !== 'catalog' && (
@@ -203,7 +188,6 @@ export default function App() {
             audioRef={catalogAudioRef}
             buildPreviewConfig={buildPreviewConfig}
             onPlay={handlePlayFromCatalog}
-            onEdit={handleEditFromCatalog}
             onBack={() => setScreen('setup')}
           />
         )}

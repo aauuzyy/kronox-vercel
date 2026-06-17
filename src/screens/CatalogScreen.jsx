@@ -5,7 +5,7 @@ import { FieldLabel } from '../components/ui/FieldLabel.jsx'
 import { CatalogPreview } from '../components/game/CatalogPreview.jsx'
 import { useCatalog } from '../hooks/useCatalog.js'
 import { calcDifficulty, diffColor } from '../constants.js'
-import { getLogs, log } from '../lib/logger.js'
+import { log } from '../lib/logger.js'
 import styles from './CatalogScreen.module.css'
 
 const SORT_OPTIONS = [
@@ -18,16 +18,18 @@ const SORT_OPTIONS = [
 const CARD_HEIGHT = 84
 
 
-export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onEdit, onBack }) {
-  const { songs, loading, error, myLikes, toggleLike, sortBy, setSortBy } = useCatalog({ sortBy: 'newest' })
+export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onBack }) {
+  const { songs, loading, error, myLikes, toggleLike, sortBy, setSortBy } = useCatalog({ sortBy: 'difficulty' })
   const [query, setQuery] = useState('')
   const [selectedId, setSelectedId] = useState(null)
   const [previewError, setPreviewError] = useState(null)
   const [gestureAudio, setGestureAudio] = useState(null)
   const [previewNonce, setPreviewNonce] = useState(0)
+  const [sortOpen, setSortOpen] = useState(false)
   const fallbackAudioRef = useRef(null)
   const sharedAudioRef = audioRef || fallbackAudioRef
   const audioLoadAbortRef = useRef(null)
+  const sortRef = useRef(null)
 
   const handlePreviewError = useCallback(msg => setPreviewError(msg), [])
 
@@ -73,14 +75,6 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onEdit, on
     [filtered, selectSong]
   )
 
-  const resumePreviewAudio = useCallback(() => {
-    const a = sharedAudioRef.current
-    if (!a) return
-    a.play().catch(err => {
-      log('CatalogScreen resume play catch', err.name, err.message)
-    })
-  }, [])
-
   const handleKeyDown = useCallback(
     e => {
       if (!filtered.length) {
@@ -115,6 +109,17 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onEdit, on
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [handleKeyDown])
+
+  useEffect(() => {
+    if (!sortOpen) return
+    const handleClick = e => {
+      if (!sortRef.current?.contains(e.target)) {
+        setSortOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [sortOpen])
 
   useEffect(() => {
     if (!selected?.audioUrl) return
@@ -242,15 +247,33 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onEdit, on
               className={styles.input}
             />
           </div>
-          <div className={styles.sort}>
+          <div className={styles.sort} ref={sortRef}>
             <FieldLabel>Sort</FieldLabel>
-            <select value={sortBy} onChange={e => setSortBy(e.target.value)} className={styles.select}>
-              {SORT_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <button
+              type="button"
+              className={styles.sortDropdown}
+              onClick={() => setSortOpen(o => !o)}
+            >
+              {SORT_OPTIONS.find(o => o.value === sortBy)?.label}
+              <span className={styles.sortCaret}>{sortOpen ? '▲' : '▼'}</span>
+            </button>
+            {sortOpen && (
+              <div className={styles.sortMenu}>
+                {SORT_OPTIONS.map(o => (
+                  <button
+                    key={o.value}
+                    type="button"
+                    className={`${styles.sortItem} ${o.value === sortBy ? styles.sortItemActive : ''}`}
+                    onClick={() => {
+                      setSortBy(o.value)
+                      setSortOpen(false)
+                    }}
+                  >
+                    {o.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </Panel>
 
@@ -314,27 +337,11 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onEdit, on
               {previewError && <div className={styles.previewError}>Preview unavailable</div>}
 
               <div className={styles.actions}>
-                <Button size="sm" variant="ghost" onClick={() => navigator.clipboard?.writeText(getLogs().join('\n'))}>
-                  Copy logs
-                </Button>
                 <Button variant="primary" size="md" onClick={() => onPlay(selected)}>
                   Play
                 </Button>
                 <Button variant="secondary" size="md" onClick={() => onPlay(selected, true)}>
                   Auto
-                </Button>
-                <Button variant="secondary" size="md" onClick={() => onEdit(selected)}>
-                  Edit
-                </Button>
-                <Button
-                  variant="secondary"
-                  size="md"
-                  onClick={() => {
-                    resumePreviewAudio()
-                    setPreviewNonce(n => n + 1)
-                  }}
-                >
-                  Preview audio
                 </Button>
                 <Button
                   variant={myLikes.has(selected.id) ? 'danger' : 'secondary'}
