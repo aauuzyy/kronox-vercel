@@ -1,10 +1,11 @@
 import { AudioEngine } from '../audio/AudioEngine.js'
+import { Highway3DRenderer } from './renderers/Highway3DRenderer.js'
 
-const GAME_LANES = 4
+const DEFAULT_LANE_COUNT = 4
 const BASE_SCROLL_SPEED = 380 // pixels per second, matches KRONOX 2.0
 const RECEPTOR_Y_RATIO = 0.82
-const NOTE_RADIUS_RATIO = 0.36
-const RECEPTOR_SIZE_RATIO = 0.78
+const NOTE_RADIUS_RATIO = 0.40
+const RECEPTOR_SIZE_RATIO = 0.82
 
 // KRONOX 2.0 / StepMania-style symmetric timing windows (in milliseconds)
 const TIMING_WINDOWS = {
@@ -55,7 +56,8 @@ function hexToRgba(hex, alpha) {
 export class GameEngine {
   constructor(canvas, callbacks) {
     this.canvas = canvas
-    this.ctx = canvas.getContext('2d', { alpha: false })
+    this.ctx = null
+    this.renderer3d = null
     this.callbacks = callbacks || {}
     this.audio = new AudioEngine()
 
@@ -73,8 +75,9 @@ export class GameEngine {
     this.judgments = { perfect: 0, good: 0, bad: 0, miss: 0 }
     this.offsets = []
 
-    this.lanePressed = [false, false, false, false]
-    this.receptorPressed = [false, false, false, false]
+    this.laneCount = DEFAULT_LANE_COUNT
+    this.lanePressed = Array(DEFAULT_LANE_COUNT).fill(false)
+    this.receptorPressed = Array(DEFAULT_LANE_COUNT).fill(false)
     this.hitEffects = []
     this.laneFlashes = []
 
@@ -103,11 +106,16 @@ export class GameEngine {
     this.height = rect.height || Math.max(window.innerHeight - 56, 100)
     this.canvas.width = Math.floor(this.width * this.dpr)
     this.canvas.height = Math.floor(this.height * this.dpr)
-    this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    if (this.ctx) {
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    }
+    if (this.renderer3d) {
+      this.renderer3d.resize(this.width, this.height, this.dpr)
+    }
 
-    this.laneWidth = Math.min(this.width * 0.14, 110)
+    this.laneWidth = Math.min(this.width * (0.68 / this.laneCount), this.laneCount === 4 ? 125 : 105)
     this.receptorSize = this.laneWidth * RECEPTOR_SIZE_RATIO
-    this.playfieldWidth = this.laneWidth * GAME_LANES
+    this.playfieldWidth = this.laneWidth * this.laneCount
     this.playfieldX = (this.width - this.playfieldWidth) / 2
     this.receptorY = this.height * RECEPTOR_Y_RATIO
     this.noteRadius = this.laneWidth * NOTE_RADIUS_RATIO
@@ -128,8 +136,8 @@ export class GameEngine {
     for (let b = 0; b < chart.length; b++) {
       const row = chart[b]
       if (!row) continue
-      for (let l = 0; l < GAME_LANES; l++) {
-        const cell = row[l]
+      for (let l = 0; l < this.laneCount; l++) {
+        const cell = row[l] ?? 0
         if (cell === 1) {
           notes.push({ time: (b * stepMs) / 1000, lane: l, type: 'tap', hit: false, missed: false })
         } else if (cell > 1) {
@@ -154,10 +162,31 @@ export class GameEngine {
     this.audio.setVolumes({ musicVolume: volume })
   }
 
+  _initRenderer() {
+    const want3D = this.config?.renderer === '3d' && this.laneCount === 4
+    if (want3D) {
+      if (this.ctx) {
+        this.ctx = null
+      }
+      this.renderer3d = new Highway3DRenderer(this.canvas, this.config)
+      this.renderer3d.resize(this.width, this.height, this.dpr)
+    } else {
+      if (this.renderer3d) {
+        this.renderer3d.dispose()
+        this.renderer3d = null
+      }
+      this.ctx = this.canvas.getContext('2d', { alpha: false })
+      this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0)
+    }
+  }
+
   async start(config) {
     this.config = config
+    this.laneCount = config.laneCount || config.keybinds?.length || DEFAULT_LANE_COUNT
+    this._initRenderer()
     this.state = 'idle'
     this.notes = this._convertChart(config.chart, config.bpm, config.subdivision)
+    if (this.renderer3d) this.renderer3d.prepareNotes(this.notes)
     this.noteIndex = 0
 
     this.score = 0
@@ -170,8 +199,8 @@ export class GameEngine {
     this.hitEffects = []
     this.lastMissCheck = -1
 
-    this.lanePressed = [false, false, false, false]
-    this.receptorPressed = [false, false, false, false]
+    this.lanePressed = Array(this.laneCount).fill(false)
+    this.receptorPressed = Array(this.laneCount).fill(false)
     this.laneFlashes = []
 
     this.audio.setOffset(config.audioOffset || 0)
@@ -235,6 +264,10 @@ export class GameEngine {
     this._unbindInput()
     this.audio.stop()
     this.state = 'idle'
+    if (this.renderer3d) {
+      this.renderer3d.dispose()
+      this.renderer3d = null
+    }
   }
 
   endGame(reason) {
@@ -317,7 +350,7 @@ export class GameEngine {
     const x = clientX - rect.left
     const y = clientY - rect.top
     if (y < rect.height * 0.15) return -1
-    for (let l = 0; l < GAME_LANES; l++) {
+    for (let l = 0; l < this.laneCount; l++) {
       const lx = this.playfieldX + l * this.laneWidth
       if (x >= lx && x <= lx + this.laneWidth) return l
     }
@@ -612,10 +645,41 @@ export class GameEngine {
     })
   }
 
+  _getRenderState() {
+    return {
+      now: this._getNowSec(),
+      notes: this.notes,
+      noteIndex: this.noteIndex,
+      receptorPressed: this.receptorPressed,
+      laneColors: this.config?.laneColors,
+      speed: this.config?.speed,
+      scrollDown: this.config?.scrollDown,
+      flashOpacity: this.config?.flashOpacity,
+      hitEffects: this.hitEffects,
+      laneFlashes: this.laneFlashes,
+      layout: {
+        playfieldX: this.playfieldX,
+        laneWidth: this.laneWidth,
+        receptorY: this.receptorY,
+        noteRadius: this.noteRadius,
+        receptorSize: this.receptorSize,
+        width: this.width,
+        height: this.height,
+      },
+    }
+  }
+
   render() {
+    if (this.renderer3d) {
+      this.renderer3d.render(this._getRenderState())
+      return
+    }
+
     const ctx = this.ctx
     const w = this.width
     const h = this.height
+
+    if (!ctx) return
 
     ctx.fillStyle = '#000000'
     ctx.fillRect(0, 0, w, h)
@@ -626,7 +690,7 @@ export class GameEngine {
     // Lane lines
     ctx.strokeStyle = 'rgba(255,255,255,0.12)'
     ctx.lineWidth = 1
-    for (let i = 0; i <= GAME_LANES; i++) {
+    for (let i = 0; i <= this.laneCount; i++) {
       const x = this.playfieldX + i * this.laneWidth
       ctx.beginPath()
       ctx.moveTo(x, 0)
@@ -636,7 +700,7 @@ export class GameEngine {
 
     // Receptors
     const laneColors = this.config?.laneColors || ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff']
-    for (let i = 0; i < GAME_LANES; i++) {
+    for (let i = 0; i < this.laneCount; i++) {
       const x = this.playfieldX + i * this.laneWidth + this.laneWidth / 2
       const pressed = this.receptorPressed[i]
       ctx.beginPath()

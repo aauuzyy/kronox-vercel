@@ -1,9 +1,8 @@
 import { buildChart } from '../constants.js'
 
-const CHORD2 = [[0, 3], [1, 2], [0, 2], [1, 3], [0, 1], [2, 3]]
-const CHORD3 = [[0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2]]
-
-const STREAMS = [
+const CHORD2_4 = [[0, 3], [1, 2], [0, 2], [1, 3], [0, 1], [2, 3]]
+const CHORD3_4 = [[0, 1, 3], [0, 2, 3], [1, 2, 3], [0, 1, 2]]
+const STREAMS_4 = [
   [0, 1, 2, 3], [3, 2, 1, 0],
   [0, 1, 2, 1], [3, 2, 1, 2],
   [0, 1, 0, 1], [2, 3, 2, 3], [1, 2, 1, 2], [0, 3, 0, 3],
@@ -15,7 +14,25 @@ const STREAMS = [
   [0, 3, 2, 1], [1, 2, 3, 0], [0, 3, 1, 2], [3, 0, 2, 1],
 ]
 
-export async function generateChart(songFile, bpm, subdivision, beats) {
+const CHORD2_6 = [[0, 5], [1, 4], [2, 3], [0, 2], [1, 3], [3, 5], [0, 3], [2, 5]]
+const CHORD3_6 = [[0, 2, 5], [1, 3, 4], [0, 3, 5], [1, 2, 4], [2, 3, 5]]
+const STREAMS_6 = [
+  [0, 1, 2, 3, 4, 5], [5, 4, 3, 2, 1, 0],
+  [0, 1, 2, 3, 4, 3], [5, 4, 3, 2, 1, 2],
+  [0, 2, 4, 5, 3, 1], [5, 3, 1, 0, 2, 4],
+  [0, 1, 2, 1, 2, 3], [5, 4, 3, 4, 3, 2],
+  [0, 1, 0, 2, 1, 2], [5, 4, 5, 3, 4, 3],
+  [0, 2, 3, 4, 3, 2], [5, 3, 2, 1, 2, 3],
+  [0, 3, 1, 4, 2, 5], [5, 2, 4, 1, 3, 0],
+  [0, 1, 2, 3, 2, 1], [5, 4, 3, 2, 3, 4],
+]
+
+export async function generateChart(songFile, bpm, subdivision, beats, laneCount = 4) {
+  const is6K = laneCount === 6
+  const CHORD2 = is6K ? CHORD2_6 : CHORD2_4
+  const CHORD3 = is6K ? CHORD3_6 : CHORD3_4
+  const STREAMS = is6K ? STREAMS_6 : STREAMS_4
+
   const arrayBuf = await songFile.arrayBuffer()
   const ctx = new OfflineAudioContext(1, 1, 44100)
   const decoded = await ctx.decodeAudioData(arrayBuf)
@@ -57,7 +74,7 @@ export async function generateChart(songFile, bpm, subdivision, beats) {
   }
 
   let cnt = 0
-  for (let i = 0; i < totalSteps; i++) cnt += active[i]
+  for (let i = 0; i < totalSteps; i++) if (active[i]) cnt++
   const TARGET = Math.round(totalSteps * 0.55)
   const CAP = Math.round(totalSteps * 0.65)
 
@@ -126,7 +143,7 @@ export async function generateChart(songFile, bpm, subdivision, beats) {
     return lane
   }
 
-  const newChart = buildChart(totalSteps)
+  const newChart = buildChart(totalSteps, laneCount)
   const consumed = new Set()
 
   for (let i = 1; i < totalSteps; i++) {

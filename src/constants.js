@@ -1,12 +1,24 @@
 // KRONOX constants and defaults
 
-export const DEFAULT_LANE_KEYS = ['a', 's', ';', "'"]
-export const LANE_NAMES = ['LEFT', 'DOWN', 'UP', 'RIGHT']
-export const LANE_COLORS = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff']
+export const LANE_COUNTS = [4, 6]
+
+export const DEFAULT_LANE_KEYS_4 = ['a', 's', ';', "'"]
+export const DEFAULT_LANE_KEYS_6 = ['s', 'd', 'f', 'j', 'k', 'l']
+export const DEFAULT_LANE_KEYS = [...DEFAULT_LANE_KEYS_4]
+
+export const LANE_NAMES_4 = ['LEFT', 'DOWN', 'UP', 'RIGHT']
+export const LANE_NAMES_6 = ['LANE 1', 'LANE 2', 'LANE 3', 'LANE 4', 'LANE 5', 'LANE 6']
+export const LANE_NAMES = [...LANE_NAMES_4]
+
+export const LANE_COLORS_4 = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff']
+export const LANE_COLORS_6 = ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff', '#ff9f43', '#a855f7']
+export const LANE_COLORS = [...LANE_COLORS_4]
+
 export const DEFAULT_BEATS = 32
 export const DEFAULT_BPM = 120
 export const DEFAULT_SPEED = 2.0
 export const DEFAULT_SUBDIVISION = 1
+export const DEFAULT_LANE_COUNT = 4
 
 // RoBeats-style no-gear asymmetric windows.
 // offset = songTime - noteTime (negative = early, positive = late)
@@ -48,7 +60,29 @@ export const STORAGE_KEYS = {
   history: 'kronox-history',
 }
 
-export const SETTINGS_DEFAULTS = {
+export function getDefaultKeybinds(laneCount = DEFAULT_LANE_COUNT) {
+  return laneCount === 6 ? [...DEFAULT_LANE_KEYS_6] : [...DEFAULT_LANE_KEYS_4]
+}
+
+export function getDefaultLaneColors(laneCount = DEFAULT_LANE_COUNT) {
+  return laneCount === 6 ? [...LANE_COLORS_6] : [...LANE_COLORS_4]
+}
+
+export function getLaneNames(laneCount = DEFAULT_LANE_COUNT) {
+  return laneCount === 6 ? [...LANE_NAMES_6] : [...LANE_NAMES_4]
+}
+
+export function normalizeLaneSettings(settings = {}) {
+  const laneCount = settings.laneCount || DEFAULT_LANE_COUNT
+  let keybinds = Array.isArray(settings.keybinds) ? settings.keybinds : getDefaultKeybinds(laneCount)
+  if (keybinds.length !== laneCount) keybinds = getDefaultKeybinds(laneCount)
+  let laneColors = Array.isArray(settings.laneColors) ? settings.laneColors : getDefaultLaneColors(laneCount)
+  if (laneColors.length !== laneCount) laneColors = getDefaultLaneColors(laneCount)
+  return { ...settings, laneCount, keybinds, laneColors }
+}
+
+export const SETTINGS_DEFAULTS = normalizeLaneSettings({
+  laneCount: DEFAULT_LANE_COUNT,
   keybinds: [...DEFAULT_LANE_KEYS],
   pauseKey: ' ',
   laneColors: [...LANE_COLORS],
@@ -61,10 +95,11 @@ export const SETTINGS_DEFAULTS = {
   flashOpacity: 0.13,
   flashColor: '#ffffff',
   audioOffset: 0,
+  renderer: '2d',
   slowModeEnabled: true,
   slowModeKey: 'q',
   slowModeSpeed: 0.5,
-}
+})
 
 export function calcGrade(accuracy) {
   if (accuracy >= 95) return 'S+'
@@ -94,6 +129,12 @@ export function diffColor(d) {
   return '#cc44ff'
 }
 
-export function buildChart(steps) {
-  return Array.from({ length: steps }, () => [0, 0, 0, 0])
+export function buildChart(steps, laneCount = DEFAULT_LANE_COUNT) {
+  return Array.from({ length: steps }, () => Array(laneCount).fill(0))
+}
+
+export function getChartLaneCount(chart) {
+  if (!Array.isArray(chart) || !chart.length) return DEFAULT_LANE_COUNT
+  const first = chart.find(row => Array.isArray(row) && row.length > 0)
+  return first?.length || DEFAULT_LANE_COUNT
 }

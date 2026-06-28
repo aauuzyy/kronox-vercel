@@ -104,15 +104,16 @@ export class Recorder {
     const durationMs = Math.max(this._nowMs(), ...this.events.map(e => e.timeMs), 0)
     const stepMs = (60000 / this.bpm) / this.subdivision
     const steps = Math.max(64, Math.ceil(durationMs / stepMs) + this.subdivision * 4)
-    const chart = buildChart(steps)
+    const laneCount = this.keybinds.length || 4
+    const chart = buildChart(steps, laneCount)
 
     // Pair press / release events per lane
-    const lanes = [[], [], [], []]
+    const lanes = Array.from({ length: laneCount }, () => [])
     for (const ev of this.events) {
-      if (ev.lane >= 0 && ev.lane < 4) lanes[ev.lane].push(ev)
+      if (ev.lane >= 0 && ev.lane < laneCount) lanes[ev.lane].push(ev)
     }
 
-    for (let lane = 0; lane < 4; lane++) {
+    for (let lane = 0; lane < lanes.length; lane++) {
       const queue = lanes[lane]
       for (let i = 0; i < queue.length; i++) {
         const down = queue[i]

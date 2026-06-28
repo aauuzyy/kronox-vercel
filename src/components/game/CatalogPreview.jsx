@@ -150,6 +150,7 @@ export function CatalogPreview({ config, visible, onError }) {
     <div style={{ position: 'absolute', inset: 0 }}>
       <canvas
         ref={canvasRef}
+        key={config?.renderer || '2d'}
         style={{
           width: '100%',
           height: '100%',

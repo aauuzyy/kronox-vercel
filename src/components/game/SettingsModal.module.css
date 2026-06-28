@@ -129,3 +129,8 @@
   color: var(--text-dim);
   margin-top: -var(--space-1);
 }
+
+.modeButtons {
+  display: flex;
+  gap: var(--space-2);
+}

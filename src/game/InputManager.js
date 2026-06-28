@@ -1,7 +1,7 @@
 export class InputManager {
   constructor(keybinds) {
     this.keybinds = keybinds || ['a', 's', ';', "'"]
-    this.pressed = [false, false, false, false]
+    this.pressed = Array(this.keybinds.length).fill(false)
     this.buffer = [] // recent presses for input buffering
     this.onPress = null
     this.onRelease = null
@@ -26,7 +26,7 @@ export class InputManager {
     if (!this.enabled) return
     window.removeEventListener('keydown', this._downHandler)
     window.removeEventListener('keyup', this._upHandler)
-    this.pressed = [false, false, false, false]
+    this.pressed = Array(this.keybinds.length).fill(false)
     this.buffer = []
     this.enabled = false
   }

@@ -3,7 +3,12 @@ import { Modal } from '../ui/Modal.jsx'
 import { Slider } from '../ui/Slider.jsx'
 import { FieldLabel } from '../ui/FieldLabel.jsx'
 import { Button } from '../ui/Button.jsx'
-import { LANE_NAMES, DEFAULT_LANE_KEYS } from '../../constants.js'
+import {
+  LANE_COUNTS,
+  getLaneNames,
+  getDefaultKeybinds,
+  getDefaultLaneColors,
+} from '../../constants.js'
 import styles from './SettingsModal.module.css'
 
 export function SettingsModal({ settings, onChange, onClose }) {
@@ -11,11 +16,15 @@ export function SettingsModal({ settings, onChange, onClose }) {
   const [pauseKey, setPauseKey] = useState(settings.pauseKey)
   const [listening, setListening] = useState(null)
   const [conflict, setConflict] = useState(null)
+  const laneCount = settings.laneCount || 4
+  const laneNames = getLaneNames(laneCount)
 
   useEffect(() => {
-    setKeys([...settings.keybinds])
+    const next = [...(settings.keybinds || [])]
+    while (next.length < laneCount) next.push('')
+    setKeys(next)
     setPauseKey(settings.pauseKey)
-  }, [settings])
+  }, [settings, laneCount])
 
   useEffect(() => {
     if (listening === null) return
@@ -47,6 +56,7 @@ export function SettingsModal({ settings, onChange, onClose }) {
   }, [conflict])
 
   const labelKey = k => {
+    if (!k && k !== ' ') return '—'
     if (k === ' ') return 'Space'
     if (k === 'ArrowLeft') return '←'
     if (k === 'ArrowRight') return '→'
@@ -55,13 +65,46 @@ export function SettingsModal({ settings, onChange, onClose }) {
     return k.toUpperCase()
   }
 
+  const setLaneCount = (nextCount) => {
+    if (nextCount === laneCount) return
+    const patch = {
+      laneCount: nextCount,
+      keybinds: getDefaultKeybinds(nextCount),
+      laneColors: getDefaultLaneColors(nextCount),
+    }
+    if (nextCount === 6 && settings.renderer === '3d') {
+      patch.renderer = '2d'
+    }
+    onChange(patch)
+  }
+
   return (
     <Modal title="Settings" onClose={onClose} size="md">
       <div className={styles.body}>
         <section className={styles.section}>
+          <h3 className={styles.sectionTitle}>Key Mode</h3>
+          <div className={styles.toggleRow}>
+            <span>Lanes</span>
+            <div className={styles.modeButtons}>
+              {LANE_COUNTS.map(n => (
+                <Button
+                  key={n}
+                  size="sm"
+                  variant={laneCount === n ? 'primary' : 'secondary'}
+                  onClick={() => setLaneCount(n)}
+                >
+                  {n}K
+                </Button>
+              ))}
+            </div>
+          </div>
+          <div className={styles.hint}>Changing modes resets keys & colors to defaults</div>
+        </section>
+
+        <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Note Colors</h3>
           <div className={styles.colorGrid}>
-            {LANE_NAMES.map((name, i) => (
+            {laneNames.map((name, i) => (
               <label key={i} className={styles.colorRow}>
                 <div className={styles.colorPreview} style={{ background: settings.laneColors[i] }} />
                 <input
@@ -78,7 +121,7 @@ export function SettingsModal({ settings, onChange, onClose }) {
               </label>
             ))}
           </div>
-          <Button size="sm" variant="ghost" onClick={() => onChange({ laneColors: ['#ff6b6b', '#ffd93d', '#6bcb77', '#4d96ff'] })}>
+          <Button size="sm" variant="ghost" onClick={() => onChange({ laneColors: getDefaultLaneColors(laneCount) })}>
             Reset Colors
           </Button>
         </section>
@@ -128,6 +171,18 @@ export function SettingsModal({ settings, onChange, onClose }) {
             </Button>
           </div>
           <div className={styles.toggleRow}>
+            <span>Renderer</span>
+            <Button
+              size="sm"
+              variant="secondary"
+              onClick={() => onChange({ renderer: settings.renderer === '3d' ? '2d' : '3d' })}
+              disabled={laneCount === 6}
+            >
+              {settings.renderer === '3d' ? '3D Highway' : '2D'}
+            </Button>
+          </div>
+          {laneCount === 6 && <div className={styles.hint}>3D Highway is only available in 4-key mode</div>}
+          <div className={styles.toggleRow}>
             <span>Scroll Direction</span>
             <Button size="sm" variant="secondary" onClick={() => onChange({ scrollDown: !settings.scrollDown })}>
               {settings.scrollDown ? '▼ Down' : '▲ Up'}
@@ -146,7 +201,7 @@ export function SettingsModal({ settings, onChange, onClose }) {
         <section className={styles.section}>
           <h3 className={styles.sectionTitle}>Keybindings</h3>
           <div className={styles.keyList}>
-            {LANE_NAMES.map((name, i) => (
+            {laneNames.map((name, i) => (
               <div key={i} className={styles.keyRow}>
                 <div className={styles.keyLabel}>
                   <div className={styles.keyDot} style={{ background: conflict === i ? 'var(--danger)' : settings.laneColors[i] }} />
@@ -175,9 +230,9 @@ export function SettingsModal({ settings, onChange, onClose }) {
           </div>
           {conflict === 'lane' && <div className={styles.conflict}>Can't overlap a lane key</div>}
           {conflict === 'pause' && <div className={styles.conflict}>Key already bound to pause</div>}
-          {typeof conflict === 'number' && <div className={styles.conflict}>Key already bound to {LANE_NAMES[conflict]}</div>}
+          {typeof conflict === 'number' && <div className={styles.conflict}>Key already bound to {laneNames[conflict]}</div>}
           <div className={styles.keyActions}>
-            <Button size="sm" variant="ghost" onClick={() => { setKeys([...DEFAULT_LANE_KEYS]); onChange({ keybinds: [...DEFAULT_LANE_KEYS] }) }}>
+            <Button size="sm" variant="ghost" onClick={() => { setKeys([...getDefaultKeybinds(laneCount)]); onChange({ keybinds: [...getDefaultKeybinds(laneCount)] }) }}>
               Reset
             </Button>
           </div>

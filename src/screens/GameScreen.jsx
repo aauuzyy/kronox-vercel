@@ -146,7 +146,7 @@ export function GameScreen({ config, onStop }) {
 
   return (
     <div className={styles.screen}>
-      <canvas ref={canvasRef} className={styles.canvas} />
+      <canvas ref={canvasRef} key={config.renderer} className={styles.canvas} />
 
       {/* HUD */}
       <div className={styles.hud}>

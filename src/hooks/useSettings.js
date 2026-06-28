@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
-import { STORAGE_KEYS, SETTINGS_DEFAULTS } from '../constants.js'
+import { STORAGE_KEYS, SETTINGS_DEFAULTS, normalizeLaneSettings } from '../constants.js'
 
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(STORAGE_KEYS.settings)
     const parsed = raw ? JSON.parse(raw) : {}
-    return { ...SETTINGS_DEFAULTS, ...parsed }
+    return normalizeLaneSettings({ ...SETTINGS_DEFAULTS, ...parsed })
   } catch {
-    return { ...SETTINGS_DEFAULTS }
+    return normalizeLaneSettings({ ...SETTINGS_DEFAULTS })
   }
 }
 
@@ -27,11 +27,11 @@ export function useSettings() {
   }, [settings])
 
   const update = useCallback((patch) => {
-    setSettings(prev => ({ ...prev, ...patch }))
+    setSettings(prev => normalizeLaneSettings({ ...prev, ...patch }))
   }, [])
 
   const reset = useCallback(() => {
-    setSettings({ ...SETTINGS_DEFAULTS })
+    setSettings(normalizeLaneSettings({ ...SETTINGS_DEFAULTS }))
   }, [])
 
   return { settings, update, reset }

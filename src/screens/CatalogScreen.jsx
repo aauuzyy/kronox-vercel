@@ -26,6 +26,7 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onBack }) 
   const [gestureAudio, setGestureAudio] = useState(null)
   const [previewNonce, setPreviewNonce] = useState(0)
   const [sortOpen, setSortOpen] = useState(false)
+  const [laneFilter, setLaneFilter] = useState('all')
   const fallbackAudioRef = useRef(null)
   const sharedAudioRef = audioRef || fallbackAudioRef
   const audioLoadAbortRef = useRef(null)
@@ -33,15 +34,22 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onBack }) 
 
   const handlePreviewError = useCallback(msg => setPreviewError(msg), [])
 
+  const getSongLaneCount = useCallback(s => (s.chart?.[0]?.length || 4), [])
+
   const filtered = useMemo(() => {
+    let list = songs
+    if (laneFilter !== 'all') {
+      const target = Number(laneFilter)
+      list = list.filter(s => getSongLaneCount(s) === target)
+    }
     const q = query.trim().toLowerCase()
-    if (!q) return songs
-    return songs.filter(
+    if (!q) return list
+    return list.filter(
       s =>
         (s.title || '').toLowerCase().includes(q) ||
         (s.creator || '').toLowerCase().includes(q)
     )
-  }, [songs, query])
+  }, [songs, query, laneFilter, getSongLaneCount])
 
   const selectedIndex = useMemo(
     () => filtered.findIndex(s => s.id === selectedId),
@@ -274,6 +282,25 @@ export function CatalogScreen({ audioRef, buildPreviewConfig, onPlay, onBack }) 
                 ))}
               </div>
             )}
+          </div>
+          <div className={styles.filter}>
+            <FieldLabel>Mode</FieldLabel>
+            <div className={styles.filterButtons}>
+              {[
+                { value: 'all', label: 'All' },
+                { value: '4', label: '4K' },
+                { value: '6', label: '6K' },
+              ].map(opt => (
+                <button
+                  key={opt.value}
+                  type="button"
+                  className={`${styles.filterBtn} ${laneFilter === opt.value ? styles.filterBtnActive : ''}`}
+                  onClick={() => setLaneFilter(opt.value)}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
           </div>
         </Panel>
 

@@ -3,7 +3,7 @@ import { Button } from '../components/ui/Button.jsx'
 import { Slider } from '../components/ui/Slider.jsx'
 import { FieldLabel } from '../components/ui/FieldLabel.jsx'
 import { Panel } from '../components/ui/Panel.jsx'
-import { DEFAULT_BPM, DEFAULT_SPEED, LANE_COLORS, buildChart, calcDifficulty, diffColor } from '../constants.js'
+import { DEFAULT_BPM, DEFAULT_SPEED, LANE_COLORS, buildChart, calcDifficulty, diffColor, getLaneNames } from '../constants.js'
 import { useAudioFile } from '../hooks/useAudioFile.js'
 import { Recorder } from '../game/Recorder.js'
 import styles from './SetupScreen.module.css'
@@ -11,7 +11,19 @@ import styles from './SetupScreen.module.css'
 const RECORD_SUBDIVISION = 64
 
 export function SetupScreen({ settings, onStart, onOpenPublish }) {
+  const laneCount = settings.laneCount || 4
+  const laneNames = getLaneNames(laneCount)
   const initialSubdivision = settings.subdivision || RECORD_SUBDIVISION
+
+  const keyLabel = k => {
+    if (k === ' ') return 'Spc'
+    if (k === 'ArrowLeft') return '←'
+    if (k === 'ArrowRight') return '→'
+    if (k === 'ArrowUp') return '↑'
+    if (k === 'ArrowDown') return '↓'
+    return k.toUpperCase()
+  }
+
   const [songFile, setSongFile] = useState(null)
   const [audioUrl, setAudioUrl] = useState(settings.audioUrl || null)
   const [audioName, setAudioName] = useState(settings.audioFileName || '')
@@ -19,7 +31,21 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
   const [bpm, setBpm] = useState(settings.bpm || DEFAULT_BPM)
   const [speed, setSpeed] = useState(settings.speed || DEFAULT_SPEED)
   const [subdivision, setSubdivision] = useState(initialSubdivision)
-  const [chart, setChart] = useState(() => settings.chart?.length ? settings.chart : buildChart(initialSubdivision * 4))
+  const [chart, setChart] = useState(() =>
+    settings.chart?.length && settings.chart[0]?.length === laneCount
+      ? settings.chart
+      : buildChart(initialSubdivision * 4, laneCount)
+  )
+
+  useEffect(() => {
+    setChart(prev => {
+      if (prev?.length && prev[0]?.length === laneCount) return prev
+      const empty = buildChart(RECORD_SUBDIVISION * 4, laneCount)
+      saveSettings({ chart: empty })
+      return empty
+    })
+  }, [laneCount])
+
   const [audioPos, setAudioPos] = useState(0)
   const [isPlaying, setIsPlaying] = useState(false)
   const [autoplay, setAutoplay] = useState(false)
@@ -30,8 +56,11 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
 
   const audioRef = useRef(null)
   const fileInputRef = useRef(null)
-  const recLanePressed = useState([false, false, false, false])[0]
-  const setRecLanePressed = useState([false, false, false, false])[1]
+  const [recLanePressed, setRecLanePressed] = useState(() => Array(laneCount).fill(false))
+
+  useEffect(() => {
+    setRecLanePressed(Array(laneCount).fill(false))
+  }, [laneCount])
 
   const { savedFile, saveAudioFile } = useAudioFile()
 
@@ -82,8 +111,14 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
   useEffect(() => {
     return () => {
       recorderRef.current?.stop()
+      // Make sure any chart changes survive navigation even if Apply wasn't pressed.
+      saveSettings({ chart, songTitle, bpm, speed, subdivision, audioFileName: audioName, audioUrl })
     }
-  }, [])
+  }, [chart, songTitle, bpm, speed, subdivision, audioName, audioUrl, saveSettings])
+
+  useEffect(() => {
+    saveSettings({ chart })
+  }, [chart, saveSettings])
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.volume = settings.musicVolume ?? 1
@@ -102,7 +137,11 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
     recorderRef.current.slowModeKey = settings.slowModeKey
     recorderRef.current.slowModeSpeed = settings.slowModeSpeed
     recorderRef.current.onStateChange = setRecorderState
-    recorderRef.current.onChart = chart => setRecordedChart(chart)
+    recorderRef.current.onChart = chart => {
+      setRecordedChart(chart)
+      setChart(chart)
+      saveSettings({ chart })
+    }
     setRecordedChart(null)
     setRecordCountdown(3)
   }
@@ -131,15 +170,6 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
     setRecordedChart(null)
   }
 
-  const keyLabel = k => {
-    if (k === ' ') return 'Spc'
-    if (k === 'ArrowLeft') return '←'
-    if (k === 'ArrowRight') return '→'
-    if (k === 'ArrowUp') return '↑'
-    if (k === 'ArrowDown') return '↓'
-    return k.toUpperCase()
-  }
-
   const handleFile = async (e) => {
     const f = e.target.files[0]
     if (!f) return
@@ -150,7 +180,7 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
     const title = f.name.replace(/\.[^.]+$/, '')
     setSongTitle(title)
     setSubdivision(RECORD_SUBDIVISION)
-    const emptyChart = buildChart(RECORD_SUBDIVISION * 4)
+    const emptyChart = buildChart(RECORD_SUBDIVISION * 4, laneCount)
     setChart(emptyChart)
     saveSettings({ audioUrl: null, audioFileName: f.name, songTitle: title, subdivision: RECORD_SUBDIVISION, chart: emptyChart })
   }
@@ -252,7 +282,7 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
                   <div className={styles.recordKeyCircle} style={{ borderColor: settings.laneColors[i] + '55', background: settings.laneColors[i] + '11' }}>
                     <span style={{ color: settings.laneColors[i] }}>{keyLabel(k)}</span>
                   </div>
-                  <span>{['Left','Down','Up','Right'][i]}</span>
+                  <span>{laneNames[i]}</span>
                 </div>
               ))}
             </div>
@@ -285,8 +315,8 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
                 <div className={styles.recordingSub}>{recorderState.isPaused ? 'Press SPACE to resume' : `${Math.floor(audioPos)}s — tap or hold ${settings.keybinds.map(keyLabel).join(', ')} · ${keyLabel(settings.slowModeKey)} = slow`}</div>
               </div>
             </Panel>
-            <div className={styles.recordTouchGrid}>
-              {[0, 1, 2, 3].map(lane => (
+            <div className={styles.recordTouchGrid} style={{ gridTemplateColumns: `repeat(${laneCount}, 1fr)` }}>
+              {Array.from({ length: laneCount }, (_, lane) => (
                 <button
                   key={lane}
                   className={`${styles.recordTouchBtn} ${recLanePressed[lane] ? styles.recordTouchBtnActive : ''}`}
@@ -297,7 +327,7 @@ export function SetupScreen({ settings, onStart, onOpenPublish }) {
                   onPointerUp={e => { e.preventDefault(); setRecLanePressed(p => { const n = [...p]; n[lane] = false; return n }); recorderRef.current?.handleTouchEnd(lane) }}
                   onPointerLeave={() => setRecLanePressed(p => { const n = [...p]; n[lane] = false; return n })}
                 >
-                  <span className={styles.recordTouchLabel}>{['LEFT','DOWN','UP','RIGHT'][lane]}</span>
+                  <span className={styles.recordTouchLabel}>{laneNames[lane]}</span>
                   <span className={styles.recordTouchKey}>{keyLabel(settings.keybinds[lane])}</span>
                 </button>
               ))}

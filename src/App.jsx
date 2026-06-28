@@ -11,7 +11,7 @@ import { HistoryModal } from './components/game/HistoryModal.jsx'
 import { CalibrationModal } from './components/game/CalibrationModal.jsx'
 import { PublishModal } from './components/game/PublishModal.jsx'
 import { useSettings } from './hooks/useSettings.js'
-import { calcGrade } from './constants.js'
+import { calcGrade, getChartLaneCount, getDefaultKeybinds, getDefaultLaneColors } from './constants.js'
 import { addPlayerGameResult, saveHistoryEntry } from './lib/stats.js'
 import './styles/base.css'
 
@@ -43,9 +43,21 @@ export default function App() {
     setScreen('catalog')
   }
 
+  const ensureLaneConfig = (baseConfig) => {
+    const targetLaneCount = Math.max(baseConfig.laneCount || 0, getChartLaneCount(baseConfig.chart), settings.laneCount || 4)
+    const keybinds = settings.keybinds.length >= targetLaneCount
+      ? settings.keybinds.slice(0, targetLaneCount)
+      : [...settings.keybinds, ...getDefaultKeybinds(targetLaneCount).slice(settings.keybinds.length)]
+    const laneColors = settings.laneColors.length >= targetLaneCount
+      ? settings.laneColors.slice(0, targetLaneCount)
+      : [...settings.laneColors, ...getDefaultLaneColors(targetLaneCount).slice(settings.laneColors.length)]
+    return { ...baseConfig, laneCount: targetLaneCount, keybinds, laneColors }
+  }
+
   const handleStart = (cfg) => {
-    setGameConfig({
+    setGameConfig(ensureLaneConfig({
       ...cfg,
+      laneCount: settings.laneCount,
       keybinds: settings.keybinds,
       laneColors: settings.laneColors,
       sfxVolume: settings.sfxVolume,
@@ -53,9 +65,10 @@ export default function App() {
       pauseKey: settings.pauseKey,
       scrollDown: settings.scrollDown,
       audioOffset: settings.audioOffset,
+      renderer: settings.renderer,
       showStars: settings.showStars,
       starColor: settings.starColor,
-    })
+    }))
     setScreen('game')
   }
 
@@ -92,7 +105,7 @@ export default function App() {
     setScreen('game')
   }
 
-  const buildGameConfig = (song, autoplay = false, preview = false) => ({
+  const buildGameConfig = (song, autoplay = false, preview = false) => ensureLaneConfig({
     audioUrl: song.audioUrl,
     songTitle: song.title,
     bpm: song.bpm,
@@ -107,6 +120,7 @@ export default function App() {
     pauseKey: settings.pauseKey,
     scrollDown: settings.scrollDown,
     audioOffset: settings.audioOffset,
+    renderer: settings.renderer,
     showStars: settings.showStars,
     starColor: settings.starColor,
     flashOpacity: settings.flashOpacity,
@@ -116,7 +130,7 @@ export default function App() {
       : {}),
   })
 
-  const buildPreviewConfig = (song, audioElement = null) => ({
+  const buildPreviewConfig = (song, audioElement = null) => ensureLaneConfig({
     audioElement,
     audioUrl: song.audioUrl,
     songTitle: song.title,
@@ -135,6 +149,7 @@ export default function App() {
     pauseKey: settings.pauseKey,
     scrollDown: settings.scrollDown,
     audioOffset: 0,
+    renderer: settings.renderer,
     showStars: settings.showStars,
     starColor: settings.starColor,
     flashOpacity: settings.flashOpacity,
